@@ -1,8 +1,25 @@
+# Local Variables
+CXX = g++-14
+CXX_FLAGS =
+
+# Host Variables
+CXX_HOST = g++
+CXX_HOST_FLAGS = 
+
 all:
-	g++ main.cpp -o main
+	$(CXX) $(CXX_FLAGS) main.cpp -o main
 
 run: 
 	./main
 
 clean:
-	rm main
+	rm -f main
+
+compile-on-host:
+	$(CXX_HOST) $(CXX_HOST_FLAGS) main.cpp -o main
+
+run-on-host:
+	./main
+
+clean-on-host:
+	rm -f main
