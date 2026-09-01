@@ -3,7 +3,7 @@
 set -e
 
 # Usage: ./run.sh [-c] []
-# -c: copy newer files
+# -c: copy files first
 
 # Resolving flags
 while getopts 'cf' OPTION; do
@@ -24,6 +24,8 @@ source .env
 copy_files_to_host() {
     sshpass -p "$PASSWD" scp -P "$PORT" \
       "main.cpp" \
+      "cpu_kernels.h" \
+      "util.h" \
       "Makefile" \
       "${USER}@${HOST}:${REMOTE_PATH}"
 }

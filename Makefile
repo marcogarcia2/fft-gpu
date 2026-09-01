@@ -4,7 +4,7 @@ CXX_FLAGS =
 
 # Host Variables
 CXX_HOST = g++
-CXX_HOST_FLAGS = 
+CXX_HOST_FLAGS =
 
 all:
 	$(CXX) $(CXX_FLAGS) main.cpp -o main
