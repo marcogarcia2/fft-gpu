@@ -3,21 +3,24 @@
 #include "cpu_kernels.h"
 #include "util.h"
 
+#define ARRAY_SZ 1024
+#define RPT 10
+
 int main(int argc, char *argv[]) {
 
     //Kernels list
-    std::vector<KernelFn> kernels = { DFT, FFT };
-    std::vector<std::string> kernel_names = { "DFT", "FFT" };
+    std::vector<KernelFn> kernels = { rec_FFT, iter_FFT };
+    std::vector<std::string> kernel_names = { "Recursive FFT", "Iteractive FFT" };
     KernelFn kernel;
 
     // Signals and N
     const std::size_t N = ARRAY_SZ;
     std::vector<double> x(N);
     std::vector<Complex> X(N);
-    set_vector(x, N);
+    set_vector(x);
 
     // Check if kernels are returning the same answer
-    std::string ret = check_correctude(kernels, kernel_names, x, N);    
+    std::string ret = check_correctude(kernels, kernel_names, x);    
     if (ret.length() > 0) {
         std::cout << "Incorrect kernels: " << ret << std::endl;
         std::cout << "Aborting" << std::endl;
@@ -40,7 +43,7 @@ int main(int argc, char *argv[]) {
             clean_cache();
 
             tp begin = std::chrono::steady_clock::now();
-            kernel(x, N);
+            kernel(x);
             tp end = std::chrono::steady_clock::now();
             
             times[r] = std::chrono::duration<double>(end - begin).count();
@@ -51,7 +54,7 @@ int main(int argc, char *argv[]) {
             avgtime += times[r];
         }
         avgtime = avgtime / (RPT-1);
-        std::cout << "Kernel name:\t" << kernel_names[k] << std::endl;
+        std::cout << "Kernel:\t\t" << kernel_names[k] << std::endl;
         std::cout << "Avg Time:\t" << avgtime << std::endl;
         std::cout << std::endl;
     }

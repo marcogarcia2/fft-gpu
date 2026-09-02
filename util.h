@@ -6,10 +6,7 @@
 #include <cmath>
 #include <iostream>
 #include <random>
-
-
-#define ARRAY_SZ 2048
-#define RPT 150
+#include <cassert>
 
 #define KB (1024)
 #define MB (1024 * KB)
@@ -20,7 +17,7 @@
 using tp = std::chrono::steady_clock::time_point;
 using duration = std::chrono::duration<double>;
 using Complex = std::complex<double>;
-using KernelFn = std::vector<Complex>(*)(const std::vector<double>&, std::size_t);
+using KernelFn = std::vector<Complex>(*)(const std::vector<double>&);
 
 // cleaning cache fn
 static unsigned char dummy_buffer[LARGEST_CACHE_SZ];
@@ -38,19 +35,31 @@ void debug(std::string message) {
     std::cout << message << std::endl;
 }
 
-void set_vector(std::vector<double>& f, const std::size_t Np) {
+template <typename T>
+void print_vector(const std::vector<T>& f) {
+    for (std::size_t i { 0 }; i < f.size(); i++) {
+        std::cout << f[i];
+        if (i < (f.size() - 1)) std::cout << ", ";
+    }
+    std::cout << std::endl;
+}
+
+void set_vector(std::vector<double>& f) {
+    std::size_t N = f.size();
     std::mt19937 rng(42);
     std::uniform_real_distribution<double> dist(-1.0, 1.0);
     // for (auto& i : f) i = dist(rng); 
-    for (std::size_t i { 0 }; i < Np; i++) {
+    for (std::size_t i { 0 }; i < N; i++) {
         f[i] = dist(rng);
     }
 }
 
-bool compare_vectors(const std::vector<Complex>& X, const std::vector<Complex>& Y, const std::size_t Np) {
+bool compare_vectors(const std::vector<Complex>& X, const std::vector<Complex>& Y) {
+    assert(X.size() == Y.size());
+    std::size_t N = X.size();
     double threshold = 1e-9;
     double max_diff = 0.0;
-    for (std::size_t i { 0 }; i < Np; i++) {
+    for (std::size_t i { 0 }; i < N; i++) {
         max_diff = std::max(max_diff, std::abs(X[i] - Y[i]));
         if (max_diff > threshold) {
             std::cout << X[i] << " and " << Y[i] << " at element " << i << std::endl;
@@ -60,7 +69,7 @@ bool compare_vectors(const std::vector<Complex>& X, const std::vector<Complex>& 
     return true;
 }
 
-std::string check_correctude(const std::vector<KernelFn>& kernels, const std::vector<std::string>& kernel_names, const std::vector<double>& f, const std::size_t Np) {
+std::string check_correctude(const std::vector<KernelFn>& kernels, const std::vector<std::string>& kernel_names, const std::vector<double>& f) {
     // Return variable
     std::string ret = "";
 
@@ -70,14 +79,14 @@ std::string check_correctude(const std::vector<KernelFn>& kernels, const std::ve
 
     // Assumes first kernel is correct
     KernelFn kernel = kernels[0];
-    std::vector<Complex> F = kernel(f, Np);
+    std::vector<Complex> F = kernel(f);
 
     for (std::size_t k = 1; k < kernels.size(); k++) {
         
         kernel = kernels[k];
-        std::vector<Complex> F_aux = kernel(f, Np);
+        std::vector<Complex> F_aux = kernel(f);
 
-        if (!compare_vectors(F, F_aux, Np)) {
+        if (!compare_vectors(F, F_aux)) {
             // At least one kernel is incorrect
             if (ret.length() == 0)
                 ret = kernel_names[k];
