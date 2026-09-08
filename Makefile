@@ -23,3 +23,8 @@ run-on-host:
 
 clean-on-host:
 	rm -f main
+
+roofline:
+	nvcc roofline.cu -o roofline
+	./roofline
+	rm -f roofline
