@@ -1,8 +1,12 @@
 #!/bin/bash
 
 set -e
-source .env 
-# add robustness: make it work from every path ()
+
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+REPO_DIR="$SCRIPT_DIR/.."
+
+# Sourcing .env file
+source "$REPO_DIR/.env"
 
 # Function that copies all needed files to host
 copy_files_to_host() {

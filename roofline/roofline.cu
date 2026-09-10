@@ -14,6 +14,8 @@ __global__ void copyKernel(const float* in, float* out, size_t n) {
 
 __host__ double bandwidthBenchmark() {
 
+    std::cout << "Running bandwidth benchmark..." << std::endl;
+
     size_t n = 1 << 26;                  // ~67M floats = 256 MB por buffer
     size_t bytes = n * sizeof(float);
 
@@ -68,6 +70,8 @@ __global__ void computeKernel(T* out, int iters) {
 
 template <typename T>
 __host__ double compute_benchmark() {
+
+    std::cout << "Running compute benchmark..." << std::endl;
 
     int iters = 50000;
     int threads = 256, blocks = 1024;   // test different 'blocks' to saturate GPU
