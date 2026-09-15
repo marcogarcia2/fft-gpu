@@ -2,51 +2,51 @@
 
 set -e
 
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+
 # Usage: ./run.sh [-c] []
 # -c: copy files first
 
 # Resolving flags
-while getopts 'cf' OPTION; do
+while getopts 'fb' OPTION; do
     case "$OPTION" in
-        c) 
-          COPY=1
-          ;;
         f)
           FOO=1
+          ;;
+        b) 
+          BAR=1
           ;;
     esac
 done
 
-# Getting HOST and PASSWD variables
-source .env
+# Sourcing .env file
+source "$SCRIPT_DIR/.env"
 
 # Function that copies all needed files to host
 copy_files_to_host() {
     sshpass -p "$PASSWD" scp -P "$PORT" \
-      "main.cpp" \
-      "cpu_kernels.h" \
-      "util.h" \
       "Makefile" \
+      "main.cu" \
+      "util.cuh" \
+      "kernels.cuh" \
       "${USER}@${HOST}:${REMOTE_PATH}"
 }
 
 # Copy files if flag is passed
-if [[ -n $COPY ]]; then
-    echo "Copying files to host..."
-    copy_files_to_host
-    echo "Successfully copied all files to host."
-fi
 
-# Compiling on remote host
-sshpass -p "$PASSWD" ssh -p "$PORT" "${USER}@${HOST}" "cd $REMOTE_PATH && make compile-on-host"
-echo "Compiled"
+echo "Copying files to host..."
+copy_files_to_host
+echo "Successfully copied all files to host."
 
-# Run on host
-sshpass -p "$PASSWD" ssh -p "$PORT" "${USER}@${HOST}" "cd $REMOTE_PATH && make run-on-host"
+echo "Compiling program..."
+sshpass -p "$PASSWD" ssh -p "$PORT" "${USER}@${HOST}" "cd $REMOTE_PATH && make cuda-compile"
+
+echo "Running..."
+sshpass -p "$PASSWD" ssh -p "$PORT" "${USER}@${HOST}" "cd $REMOTE_PATH && make cuda-run"
+
+# echo "Cleaning files..."
+sshpass -p "$PASSWD" ssh -p "$PORT" "${USER}@${HOST}" "cd $REMOTE_PATH && make cuda-clean"
+echo "Program Compiled."
 
 # Copy output from host to local
-sshpass -p "$PASSWD" scp -P "$PORT" "${USER}@${HOST}:${REMOTE_PATH}/OUTPUT_SAMPLE.csv" "OUTPUT_SAMPLE.csv" 
-
-
-
-
+# sshpass -p "$PASSWD" scp -P "$PORT" "${USER}@${HOST}:${REMOTE_PATH}/OUTPUT_SAMPLE.csv" "OUTPUT_SAMPLE.csv" 

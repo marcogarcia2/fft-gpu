@@ -1,16 +1,14 @@
-#include <chrono>
-
 #include "cpu_kernels.h"
 #include "util.h"
 
-#define ARRAY_SZ 1024
+#define ARRAY_SZ 2 << 22
 #define RPT 10
 
 int main(int argc, char *argv[]) {
 
     //Kernels list
-    std::vector<KernelFn> kernels = { rec_FFT, iter_FFT };
-    std::vector<std::string> kernel_names = { "Recursive FFT", "Iteractive FFT" };
+    std::vector<KernelFn> kernels = { parallel_FFT, collapsed_parallel_FFT };
+    std::vector<std::string> kernel_names = { "Parallel FFT", "Collapsed Parallel FFT" };
     KernelFn kernel;
 
     // Signals and N

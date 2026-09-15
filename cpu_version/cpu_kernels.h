@@ -2,9 +2,10 @@
 #define CPU_KERNELS_H
 
 #include "util.h"
+#include <omp.h>
 
-std::vector<Complex> DFT(const std::vector<double>& f, const std::size_t Np) {
-
+std::vector<Complex> DFT(const std::vector<double>& f) {
+	std::size_t Np = f.size();
     std::vector<Complex> F(Np);
 
     for (std::size_t k { 0 }; k < Np; k++) {
@@ -80,7 +81,7 @@ std::vector<Complex> iter_FFT(const std::vector<double>& f_real) {
 	int log2n = 0;
 	while ((1u << log2n) < N) log2n++;
 
-	// Reordena vetor com bit-reversal
+	// Sorts in reversed bits order
 	for (std::size_t i { 0 }; i < N; i++) {
 		std::size_t j = reverse_bits(i, log2n);
 		if (i < j) std::swap(f[i], f[j]);
@@ -111,6 +112,91 @@ std::vector<Complex> iter_FFT(const std::vector<double>& f_real) {
 		}
 	}
 
+	return f;
+}
+
+// Parallel iter-FFT with OMP
+std::vector<Complex> parallel_FFT(const std::vector<double>& f_real) {
+
+	std::size_t N = f_real.size();
+	std::vector<Complex> f(f_real.begin(), f_real.end());
+	int log2n = 0;
+	while ((1u << log2n) < N) log2n++;
+
+	// Sorts in reversed bits order
+	#pragma omp parallel for
+	for (std::size_t i = 0; i < N; i++) 
+	{
+		std::size_t j = reverse_bits(i, log2n);
+		if (i < j) std::swap(f[i], f[j]);
+	}	
+	
+	// Loop externo: representa cada nível de recursão
+	for (std::size_t len { 2 }; len <= N; len <<= 1) {
+		double arg = -2.0 * M_PI / len;
+		Complex W_base(std::cos(arg), std::sin(arg));
+		
+		// Laço intermediário: delimita os blocos
+        #pragma omp parallel for
+		for (std::size_t i = 0; i < N; i += len)
+        {
+            Complex W (1.0, 0.0);	
+            
+			// Laço interno: percorre cada elemento do bloco
+			for (std::size_t k = 0; k < len/2; k++) 
+            {
+				
+				// Borboletas
+				Complex u = f[i+k];
+				Complex v = f[i+k+(len/2)] * W;
+				
+				// Recombinando
+				f[i+k]         = u + v;
+				f[i+k+(len/2)] = u - v;
+				
+				W *= W_base;
+			}
+		}
+	}
+
+	return f;
+}
+
+std::vector<Complex> collapsed_parallel_FFT(const std::vector<double>& f_real) {
+	const std::size_t N { f_real.size() };
+	std::vector<Complex> f (f_real.begin(), f_real.end());
+	int log2n = 0;
+	while ((1u << log2n) < N) log2n++;
+	
+	// Sorts in reversed bits order
+	#pragma omp parallel for
+	for (std::size_t i = 0; i < N; i++) {
+		std::size_t j = reverse_bits(i, log2n);
+		if (i < j) std::swap(f[i], f[j]);
+	}
+	
+	// Blocks size
+	for (std::size_t len { 2 }; len <= N; len <<= 1) {
+		
+		// Each iteration is independent
+		#pragma omp parallel for
+		for (std::size_t b = 0; b < N/2; b++) 
+		{
+			std::size_t block = b / (len/2);
+			std::size_t k = b % (len/2);
+			std::size_t i = block * len;
+			
+			double arg = -2.0 * M_PI * k / len;
+			Complex W(std::cos(arg), std::sin(arg));
+			
+			Complex u = f[i+k];
+			Complex v = f[i+k+(len/2)] * W;
+			
+			f[i+k]         = u + v;
+			f[i+k+(len/2)] = u - v; 
+		}
+	}
+	
 	return f;
 }
 

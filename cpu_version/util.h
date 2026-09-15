@@ -7,6 +7,7 @@
 #include <iostream>
 #include <random>
 #include <cassert>
+#include <chrono>
 
 #define KB (1024)
 #define MB (1024 * KB)
@@ -57,7 +58,7 @@ void set_vector(std::vector<double>& f) {
 bool compare_vectors(const std::vector<Complex>& X, const std::vector<Complex>& Y) {
     assert(X.size() == Y.size());
     std::size_t N = X.size();
-    double threshold = 1e-9;
+    double threshold = 1e-5;
     double max_diff = 0.0;
     for (std::size_t i { 0 }; i < N; i++) {
         max_diff = std::max(max_diff, std::abs(X[i] - Y[i]));

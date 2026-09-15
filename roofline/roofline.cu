@@ -1,6 +1,5 @@
 #include <cstdio>
 #include <fstream>
-#include <cuda_runtime.h>
 #include <iostream>
 
 using String = std::string;
@@ -46,6 +45,9 @@ __host__ double bandwidthBenchmark() {
     double seconds = (ms / 1000.0);
 
     double gbps = (double)(2.0 * bytes * reps) / seconds / 1e9;   // 2 times: each element is read AND written
+
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
 
     cudaFree(d_in);
     cudaFree(d_out);

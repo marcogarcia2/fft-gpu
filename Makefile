@@ -1,13 +1,18 @@
-# Local Variables
+# LOCAL Variables (CPU version)
 CXX = g++-14
 CXX_FLAGS =
+CXX_LIBS = -fopenmp
 
-# Host Variables
-CXX_HOST = g++
-CXX_HOST_FLAGS =
+# REMOTE variables (GPU version)
+RCXX = nvcc
+RCXX_FLAGS = 
+RCXX_LIBS = -lcufft
 
-all:
-	$(CXX) $(CXX_FLAGS) main.cpp -o main
+# LOCAL TARGETS:
+all: compile run clean
+
+compile:
+	$(CXX) $(CXX_FLAGS) cpu_version/main.cpp -o main $(CXX_LIBS)
 
 run: 
 	./main
@@ -15,16 +20,20 @@ run:
 clean:
 	rm -f main
 
-compile-on-host:
-	$(CXX_HOST) $(CXX_HOST_FLAGS) main.cpp -o main
 
-run-on-host:
+# REMOTE TARGETS:
+cuda-compile:
+	$(RCXX) $(RCXX_FLAGS) main.cu -o main $(RCXX_LIBS)
+
+cuda-run:
 	./main
 
-clean-on-host:
+cuda-clean:
 	rm -f main
 
+
+# ROOFLINE MODEL
 roofline:
-	nvcc roofline.cu -o roofline
+	$(RCXX) roofline.cu -o roofline
 	./roofline
 	rm -f roofline
