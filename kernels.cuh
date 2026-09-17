@@ -57,7 +57,6 @@ __device__ int reverseBits(int i, int log2n) {
 
 __global__ void reverseBitsLocallyKernel(float2* d_X, int N, int log2n) {
     int i = blockDim.x * blockIdx.x + threadIdx.x;
-    
     if (i >= N) return;
 
     int j = reverseBits(i, log2n);
@@ -87,7 +86,6 @@ __global__ void FFT_Naive_butterflyKernel(float2* d_X, int N, int len) {
 
 __host__ void FFT_Naive(float2 *d_X, int N, int blocksPerGrid, int threadsPerBlock) {
     int log2n = 0;
-
     while((1u << log2n) < N) log2n++;
 
     reverseBitsLocallyKernel<<<blocksPerGrid, threadsPerBlock>>>(d_X, N, log2n);

@@ -2,10 +2,13 @@
 
 set -e
 
+timestamp=$(date +%Y%m%d_%H%M%S)
+
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
-# Usage: ./run.sh [-c] []
-# -c: copy files first
+# Usage: ./run.sh [-f] [-b]
+# -f: foo foo foo
+# -b: bar bar bar
 
 # Resolving flags
 while getopts 'fb' OPTION; do
@@ -32,21 +35,19 @@ copy_files_to_host() {
       "${USER}@${HOST}:${REMOTE_PATH}"
 }
 
-# Copy files if flag is passed
-
-echo "Copying files to host..."
+echo "Copying files to remote host..."
 copy_files_to_host
-echo "Successfully copied all files to host."
+echo "Successfully copied all files to remote host."
 
 echo "Compiling program..."
 sshpass -p "$PASSWD" ssh -p "$PORT" "${USER}@${HOST}" "cd $REMOTE_PATH && make cuda-compile"
+echo "Program compiled successfully."
 
 echo "Running..."
 sshpass -p "$PASSWD" ssh -p "$PORT" "${USER}@${HOST}" "cd $REMOTE_PATH && make cuda-run"
 
 # echo "Cleaning files..."
 sshpass -p "$PASSWD" ssh -p "$PORT" "${USER}@${HOST}" "cd $REMOTE_PATH && make cuda-clean"
-echo "Program Compiled."
 
-# Copy output from host to local
-# sshpass -p "$PASSWD" scp -P "$PORT" "${USER}@${HOST}:${REMOTE_PATH}/OUTPUT_SAMPLE.csv" "OUTPUT_SAMPLE.csv" 
+# Copy output from remote to local
+sshpass -p "$PASSWD" scp -P "$PORT" "${USER}@${HOST}:${REMOTE_PATH}/Results.csv" "results/${timestamp}.csv" 

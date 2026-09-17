@@ -7,63 +7,48 @@
 
 #define THRESHOLD 1e-4f
 
+// Struct used to store some constants used in results
+struct constants {
+    std::string kname;
+    std::string precision;
+    int nx;
+    int rpt;
+    int acc;
+    float thresh;
+};
+
+// Functions imported from "kernels.cuh"
 void FFT_Naive(float2 *d_X, int N, int blocksPerGrid, int threadsPerBlock);
 void cuFFT(float2* h_X, int N);
 
 // --- COMPLEX ARITHMETHIC --- //
 
-// float (device)
-__device__ float2 cmul(float2 a, float2 b) {
-    return make_float2(a.x*b.x - a.y*b.y, a.x*b.y + a.y*b.x);
+__host__ __device__ inline float2 make_vec2(float x, float y) {
+    return make_float2(x, y);
 }
-__device__ float2 cadd(float2 a, float2 b) {
-    return make_float2(a.x + b.x, a.y + b.y);
-}
-__device__ float2 csub(float2 a, float2 b) {
-    return make_float2(a.x - b.x, a.y - b.y);
+__host__ __device__ inline double2 make_vec2(double x, double y) {
+    return make_double2(x, y);
 }
 
-// double (device)
-__device__ double2 cmul(double2 a, double2 b) {
-    return make_double2(a.x*b.x - a.y*b.y, a.x*b.y + a.y*b.x);
+template <typename T>
+__host__ __device__ inline T cmul(T a, T b) {
+    return make_vec2(a.x*b.x - a.y*b.y, a.x*b.y + a.y*b.x);
 }
-__device__ double2 cadd(double2 a, double2 b) {
-    return make_double2(a.x + b.x, a.y + b.y);
+template <typename T>
+__host__ __device__ inline T cadd(T a, T b) {
+    return make_vec2(a.x + b.x, a.y + b.y);
 }
-__device__ double2 csub(double2 a, double2 b) {
-    return make_double2(a.x - b.x, a.y - b.y);
+template <typename T>
+__host__ __device__ inline T csub(T a, T b) {
+    return make_vec2(a.x - b.x, a.y - b.y);
 }
-
-// float (host)
-float2 cmul_h(float2 a, float2 b) {
-    return make_float2(a.x*b.x - a.y*b.y, a.x*b.y + a.y*b.x);
-}
-float2 cadd_h(float2 a, float2 b) {
-    return make_float2(a.x + b.x, a.y + b.y);
-}
-float2 csub_h(float2 a, float2 b) {
-    return make_float2(a.x - b.x, a.y - b.y);
-}
-float cabs_h(float2 a) {
-    return std::sqrt(a.x*a.x + a.y*a.y);
-}
-
-// double (host)
-double2 cmul_h(double2 a, double2 b) {
-    return make_double2(a.x*b.x - a.y*b.y, a.x*b.y + a.y*b.x);
-}
-double2 cadd_h(double2 a, double2 b) {
-    return make_double2(a.x + b.x, a.y + b.y);
-}
-double2 csub_h(double2 a, double2 b) {
-    return make_double2(a.x - b.x, a.y - b.y);
-}
-double cabs_h(double2 a) {
+template <typename T>
+__host__ __device__ inline auto cabs(T a) {
     return std::sqrt(a.x*a.x + a.y*a.y);
 }
 
 
-// --- HELPER FUNCTIONS --- //
+// --- HARNESS HELPER FUNCTIONS --- //
 
 // Function that resets vector 
 void setVector(float2* X, int N) {
@@ -74,7 +59,6 @@ void setVector(float2* X, int N) {
         X[i].y = dist(rng);
     }
 }
-
 
 // Function that checks if a kernel is correct against cuFFT results
 bool checkKernel(int N) {
@@ -100,7 +84,7 @@ bool checkKernel(int N) {
     // Assuming cufft_X is the one with correct values
     float max_diff = 0.0;
     for (int i = 0; i < N; i++) {
-        max_diff = std::max(max_diff, cabs_h(csub_h(cufft_X[i], h_myKernel_X[i])));
+        max_diff = std::max(max_diff, cabs(csub(cufft_X[i], h_myKernel_X[i])));
         if (max_diff > THRESHOLD){
             printf("(%f,%f) and (%f,%f) at [%d]", cufft_X[i].x, cufft_X[i].y, h_myKernel_X[i].x, h_myKernel_X[i].y, i);
             ret = false;
@@ -115,5 +99,106 @@ bool checkKernel(int N) {
     return ret;
 }
 
+// --- STATISTICS FUNCTIONS --- //
+
+// Quicksort
+int partition(float* vector, int left, int right) {
+    float pivot = vector[right];
+    int i = left-1;
+
+    for (int j = left; j < right; j++) {
+        if (vector[j] < pivot) {
+            i++;
+            float temp = vector[i];
+            vector[i] = vector[j];
+            vector[j] = temp;
+        }
+    }
+    float temp = vector[i+1];
+    vector[i+1] = vector[right];
+    vector[right] = temp;
+
+    return i+1;
+}
+
+void quicksort(float* vector, int left, int right) {
+    if (left < right) {
+        int pi = partition(vector, left, right);
+        quicksort(vector, left, pi-1);
+        quicksort(vector, pi+1, right);
+    }
+}
+
+// Median, mean, stddev and ic95
+
+float median (float* vector, int N) {
+    quicksort(vector, 0, N-1);
+    if (N & 1) // if odd
+        return vector[N/2];
+
+    // if even
+    return (vector[(N/2)-1] + vector[N/2]) / 2;
+}
+
+float mean(float* vector, int N) {
+    float sum = vector[0];
+    for (int i = 1; i < N; i++)
+        sum += vector[i];
+    return sum / N;
+}
+
+float stddev(float* vector, int N) {
+    if (N <= 1) 
+        return 0.0;
+
+    float m = mean(vector, N);
+    float sum = 0.0;
+    for (int i = 0; i < N; i++) {
+        sum += (vector[i] - m)*(vector[i] - m);
+    }
+    sum /= (N - 1);
+    return std::sqrt(sum);
+}
+
+float ic95(float* vector, int N) {
+    float t = 1.96;
+    float SEM = stddev(vector, N) / std::sqrt((float)N);
+    return t * SEM;
+}
+
+
+// --- CSV FILE --- //
+
+// Create a CSV file with the first line with columns names
+std::ofstream createCSV() {
+    std::ofstream outf { "Results.csv" };
+    outf << "kernel_version, N, precision, RPT, ACC, threshold, ";          // harness
+    outf << "time_mean_ms, time_median_ms, time_std, time_ci95, ";          // kernel
+    outf << "time_h2d_ms, time_d2h_ms, ";                                   // transfers
+    outf << "energy_mean_j, energy_median_j, energy_std, energy_ci95, ";    // energy
+    outf << "gflops, perf_per_watt, edp" << std::endl;                      // other
+    return outf;
+}
+
+// Function that writes one line of results 
+void writeResultsCSV(std::ofstream& outf, float* kernel_times, float* H2D_times, float* D2H_times, const constants& c) {
+    outf << c.kname << ", " << c.nx << ", " << c.precision << ", " << c.rpt << ", " << c.acc << ", " << c.thresh << ", ";
+    
+    float kernel_mean = mean(kernel_times, c.rpt);  
+    float kernel_median = median(kernel_times, c.rpt);
+    float kernel_std = stddev(kernel_times, c.rpt);
+    float kernel_ic95 = ic95(kernel_times, c.rpt);
+    outf << kernel_mean << ", " << kernel_median << ", " << kernel_std << ", " << kernel_ic95 << ", ";
+
+    float H2D_mean = mean(H2D_times, c.rpt);
+    float D2H_mean = mean(D2H_times, c.rpt);
+    outf << H2D_mean << ", " << D2H_mean << ", ";
+
+    // float energy_mean = mean(energies, N);
+    // float energy_median = median(energies, N);
+    // float energy_std = stddev(energies, N);
+    // float energy_ic95 = ic95(energies, N);
+    // outf << energy_mean << ", " << energy_median << ", " << energy_std << ", " << energy_ci95 << ", ";
+}
 
 #endif

@@ -4,10 +4,13 @@
 #include "kernels.cuh"
 #include "util.cuh"
 
-#define NX      2048 
-#define RPT     30
+#define NX      2048
+#define RPT     100
+#define ACC     500
 
 int main() {
+
+    std::ofstream outf { createCSV() };
 
     // CUDA Events to measure time
     cudaEvent_t H2D_start, H2D_stop, D2H_start, D2H_stop, kernel_start, kernel_stop;
@@ -59,12 +62,15 @@ int main() {
         cudaEventSynchronize(H2D_stop);
         cudaEventElapsedTime(&H2D_ms, H2D_start, H2D_stop);
 
-        // Kernel
+        // Kernel: medir energia sobre uma janela grande de tempo pois NVML atualiza a cada 10ms
         cudaEventRecord(kernel_start);
-        FFT_Naive(d_X, NX, blocksPerGrid, threadsPerBlock);
+        for (int k = 0; k < ACC; k++) {
+            FFT_Naive(d_X, NX, blocksPerGrid, threadsPerBlock);
+        }
         cudaEventRecord(kernel_stop);
         cudaEventSynchronize(kernel_stop);
         cudaEventElapsedTime(&kernel_ms, kernel_start, kernel_stop);
+        kernel_ms /= (ACC);
 
         // D2H transfer
         cudaEventRecord(D2H_start);
@@ -78,14 +84,18 @@ int main() {
         D2H_times[rep] = D2H_ms;
     }
 
-    // Média, Mediana, stddev...
-    float mean = 0.0;
-    for (int i = 0; i < RPT; i++) {
-        mean += kernel_times[i];
-    }
-    mean /= RPT;
-    printf("Tempo médio kernel: %fms\n", mean);
-    // write CSV
+    // Constants used in results
+    struct constants c {};
+    c.kname = "FFT_Naive";
+    c.precision = "float";
+    c.nx = NX;
+    c.rpt = RPT;
+    c.acc = ACC;
+    c.thresh = THRESHOLD;
+
+    // Writing results
+    writeResultsCSV(outf, kernel_times, H2D_times, D2H_times, c);
+
     // end kernel loop
 
     // Destroy results vectors
