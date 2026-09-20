@@ -6,7 +6,7 @@ CXX_LIBS = -fopenmp
 # REMOTE variables (GPU version)
 RCXX = nvcc
 RCXX_FLAGS = 
-RCXX_LIBS = -lcufft
+RCXX_LIBS = -lcufft -lnvidia-ml
 
 # LOCAL TARGETS:
 all: compile run clean
@@ -23,13 +23,13 @@ clean:
 
 # REMOTE TARGETS:
 cuda-compile:
-	$(RCXX) $(RCXX_FLAGS) main.cu -o main $(RCXX_LIBS)
+	@ $(RCXX) $(RCXX_FLAGS) main.cu -o main $(RCXX_LIBS)
 
 cuda-run:
-	./main
+	@ ./main
 
 cuda-clean:
-	rm -f main
+	@ rm -f main
 
 
 # ROOFLINE MODEL

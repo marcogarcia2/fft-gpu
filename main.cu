@@ -1,12 +1,14 @@
 #include <iostream>
 #include <fstream>
+#include <chrono>
+
+#include <nvml.h>
 
 #include "kernels.cuh"
 #include "util.cuh"
 
-#define NX      2048
 #define RPT     100
-#define ACC     500
+#define ACC     50000
 
 int main() {
 
@@ -22,11 +24,35 @@ int main() {
     cudaEventCreate(&kernel_start);
     cudaEventCreate(&kernel_stop);
 
+    // NVML Energy measurement
+    nvmlInit();
+    nvmlDevice_t device;
+    nvmlDeviceGetHandleByIndex(0, &device);
+    unsigned long long energy_start, energy_stop;
+    float kernel_energy_mj;
+
+    unsigned int temp;
+    nvmlDeviceGetTemperature(device, NVML_TEMPERATURE_GPU, &temp);
+    printf("Temperature start: %uC\n", temp);
+
     // Results vectors
     float* kernel_times = (float*)malloc(sizeof(float) * RPT);
-    float* H2D_times = (float*)malloc(sizeof(float) * RPT);
-    float* D2H_times = (float*)malloc(sizeof(float) * RPT);
+    float* H2D_times    = (float*)malloc(sizeof(float) * RPT);
+    float* D2H_times    = (float*)malloc(sizeof(float) * RPT);
+    float* energies     = (float*)malloc(sizeof(float) * RPT);
 
+    int NX_list[] = {1<<10, 1<<14, 1<<18, 1<<22, 1<<24};
+    int NX = NX_list[0];
+
+    // Start float-double loop
+    // Start NX Loop
+    // Start kernel loop
+    
+    // Temperature 
+    unsigned int temp_begin, temp_end;
+    nvmlDeviceGetTemperature(device, NVML_TEMPERATURE_GPU, &temp_begin);
+
+ 
     // Allocating vectors
     size_t size = NX * sizeof(float2);
     float2* h_X = (float2*)malloc(size);    // host vector
@@ -37,12 +63,9 @@ int main() {
     int threadsPerBlock = 256;
     int blocksPerGrid = (NX + threadsPerBlock - 1) / threadsPerBlock;
 
-    // Start the kernel loop:
-
     // Check if all kernels are correct with cuFFT before proceeding
     if (!checkKernel(NX)){
-        fprintf(stderr, "Error: MyKernel is not correct.\n");
-        return 1;
+        fprintf(stderr, "Error: MyKernel is not correct (NX = %d).\n", NX);
     }
     printf("Kernel is correct!\n");
 
@@ -62,16 +85,17 @@ int main() {
         cudaEventSynchronize(H2D_stop);
         cudaEventElapsedTime(&H2D_ms, H2D_start, H2D_stop);
 
-        // Kernel: medir energia sobre uma janela grande de tempo pois NVML atualiza a cada 10ms
+        // Kernel: Time and Energy
+        nvmlDeviceGetTotalEnergyConsumption(device, &energy_start);
         cudaEventRecord(kernel_start);
         for (int k = 0; k < ACC; k++) {
             FFT_Naive(d_X, NX, blocksPerGrid, threadsPerBlock);
         }
         cudaEventRecord(kernel_stop);
         cudaEventSynchronize(kernel_stop);
+        nvmlDeviceGetTotalEnergyConsumption(device, &energy_stop);
         cudaEventElapsedTime(&kernel_ms, kernel_start, kernel_stop);
-        kernel_ms /= (ACC);
-
+        
         // D2H transfer
         cudaEventRecord(D2H_start);
         cudaMemcpy(h_X, d_X, size, cudaMemcpyDeviceToHost);
@@ -79,10 +103,18 @@ int main() {
         cudaEventSynchronize(D2H_stop);
         cudaEventElapsedTime(&D2H_ms, D2H_start, D2H_stop);
 
+        // Results calculations
+        kernel_ms /= (ACC);
+        kernel_energy_mj = (float)(energy_stop - energy_start) / (ACC);
+
+        // Saves results
         kernel_times[rep] = kernel_ms;
         H2D_times[rep] = H2D_ms;
         D2H_times[rep] = D2H_ms;
+        energies[rep] = kernel_energy_mj;
     }
+    
+    nvmlDeviceGetTemperature(device, NVML_TEMPERATURE_GPU, &temp_end);
 
     // Constants used in results
     struct constants c {};
@@ -92,20 +124,28 @@ int main() {
     c.rpt = RPT;
     c.acc = ACC;
     c.thresh = THRESHOLD;
+    c.temp_begin = temp_begin;
+    c.temp_end = temp_end;
 
-    // Writing results
-    writeResultsCSV(outf, kernel_times, H2D_times, D2H_times, c);
+    // Saving results
+    writeResultsCSV(outf, kernel_times, H2D_times, D2H_times, energies, c);
 
     // end kernel loop
+    // end NX increment loop
+    // end float-double loop
+
+    // Frees memory
+    free(h_X);
+    cudaFree(d_X);
 
     // Destroy results vectors
     free(kernel_times);
     free(D2H_times);
     free(H2D_times);
+    free(energies);
 
-    // Frees memory
-    free(h_X);
-    cudaFree(d_X);
+    // NVML free
+    nvmlShutdown();
     
     // Destroy CUDA Events
     cudaEventDestroy(H2D_start);

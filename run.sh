@@ -25,6 +25,8 @@ done
 # Sourcing .env file
 source "$SCRIPT_DIR/.env"
 
+# Add ping test
+
 # Function that copies all needed files to host
 copy_files_to_host() {
     sshpass -p "$PASSWD" scp -P "$PORT" \
@@ -51,3 +53,6 @@ sshpass -p "$PASSWD" ssh -p "$PORT" "${USER}@${HOST}" "cd $REMOTE_PATH && make c
 
 # Copy output from remote to local
 sshpass -p "$PASSWD" scp -P "$PORT" "${USER}@${HOST}:${REMOTE_PATH}/Results.csv" "results/${timestamp}.csv" 
+echo "Copying results back to local..."
+
+# python3 summary.py results/${timestamp}.csv
