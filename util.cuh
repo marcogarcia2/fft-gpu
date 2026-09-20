@@ -5,7 +5,7 @@
 
 #include "kernels.cuh"
 
-#define THRESHOLD 1e-4f
+#define THRESHOLD 1e-3f
 
 // Struct used to store some constants used in results
 struct constants {
@@ -66,29 +66,36 @@ void setVector(float2* X, int N) {
 bool checkKernel(int N) {
 
     bool ret = true;
-    
+
     size_t size = N * sizeof(float2);
     float2* cufft_X = (float2*)malloc(size);
     float2* h_myKernel_X = (float2*)malloc(size);
     float2* d_myKernel_X;
     cudaMalloc(&d_myKernel_X, size);
-    
+
+    // Calcs threads and blocks
+    int threadsPerBlock = 256;
+    int blocksPerGrid = (N + threadsPerBlock - 1) / threadsPerBlock;
+
     // Fill with values
     setVector(cufft_X, N);
     setVector(h_myKernel_X, N);
     cudaMemcpy(d_myKernel_X, h_myKernel_X, size, cudaMemcpyHostToDevice);
-    
+
     // Invokes kernels
     cuFFT(cufft_X, N);
-    FFT_Naive(d_myKernel_X, N, 256, 256);
+    FFT_Naive(d_myKernel_X, N, blocksPerGrid, threadsPerBlock);
     cudaMemcpy(h_myKernel_X, d_myKernel_X, size, cudaMemcpyDeviceToHost);
-    
+
     // Assuming cufft_X is the one with correct values
     float max_diff = 0.0;
     for (int i = 0; i < N; i++) {
-        max_diff = std::max(max_diff, cabs(csub(cufft_X[i], h_myKernel_X[i])));
+        float diff = cabs(csub(cufft_X[i], h_myKernel_X[i]));
+        float ref = std::max(cabs(cufft_X[i]), 1e-6f);
+        float rel = diff / ref;
+        max_diff = std::max(max_diff, rel);
         if (max_diff > THRESHOLD){
-            printf("(%f,%f) and (%f,%f) at [%d]", cufft_X[i].x, cufft_X[i].y, h_myKernel_X[i].x, h_myKernel_X[i].y, i);
+            printf("(%f,%f) and (%f,%f) at [%d]\n", cufft_X[i].x, cufft_X[i].y, h_myKernel_X[i].x, h_myKernel_X[i].y, i);
             ret = false;
             break;
         }

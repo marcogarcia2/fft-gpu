@@ -55,4 +55,4 @@ sshpass -p "$PASSWD" ssh -p "$PORT" "${USER}@${HOST}" "cd $REMOTE_PATH && make c
 sshpass -p "$PASSWD" scp -P "$PORT" "${USER}@${HOST}:${REMOTE_PATH}/Results.csv" "results/${timestamp}.csv" 
 echo "Copying results back to local..."
 
-# python3 summary.py results/${timestamp}.csv
+python3 summary.py results/${timestamp}.csv
