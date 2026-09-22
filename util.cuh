@@ -7,6 +7,8 @@
 
 #define THRESHOLD 1e-3f
 
+using kernelFunction = void(*)(float2*, int, int, int);
+
 // Struct used to store some constants used in results
 struct constants {
     std::string kname;
@@ -21,7 +23,7 @@ struct constants {
 
 // Functions imported from "kernels.cuh"
 void FFT_Naive(float2 *d_X, int N, int blocksPerGrid, int threadsPerBlock);
-void cuFFT(float2* h_X, int N);
+void cuFFT(float2* h_X, int N, int blocksPerGrid, int threadsPerBlock);
 
 // --- COMPLEX ARITHMETHIC --- //
 
@@ -63,12 +65,18 @@ void setVector(float2* X, int N) {
 }
 
 // Function that checks if a kernel is correct against cuFFT results
-bool checkKernel(int N) {
+bool checkKernel(kernelFunction myKernel, int N) {
 
     bool ret = true;
 
     size_t size = N * sizeof(float2);
-    float2* cufft_X = (float2*)malloc(size);
+
+    // Baseline vectors
+    float2* h_cufft_X = (float2*)malloc(size);
+    float2* d_cufft_X;
+    cudaMalloc(&d_cufft_X, size);
+    
+    // MyKernel vectors
     float2* h_myKernel_X = (float2*)malloc(size);
     float2* d_myKernel_X;
     cudaMalloc(&d_myKernel_X, size);
@@ -77,32 +85,37 @@ bool checkKernel(int N) {
     int threadsPerBlock = 256;
     int blocksPerGrid = (N + threadsPerBlock - 1) / threadsPerBlock;
 
-    // Fill with values
-    setVector(cufft_X, N);
+    // Fill both data vectors with values
+    setVector(h_cufft_X, N);
     setVector(h_myKernel_X, N);
+    cudaMemcpy(d_cufft_X, h_cufft_X, size, cudaMemcpyHostToDevice);
     cudaMemcpy(d_myKernel_X, h_myKernel_X, size, cudaMemcpyHostToDevice);
 
-    // Invokes kernels
-    cuFFT(cufft_X, N);
-    FFT_Naive(d_myKernel_X, N, blocksPerGrid, threadsPerBlock);
+    // Invokes baseline kernel
+    cuFFT(d_cufft_X, N, blocksPerGrid, threadsPerBlock);
+    cudaMemcpy(h_cufft_X, d_cufft_X, size, cudaMemcpyDeviceToHost);
+    
+    // Invokes myKernel
+    myKernel(d_myKernel_X, N, blocksPerGrid, threadsPerBlock);
     cudaMemcpy(h_myKernel_X, d_myKernel_X, size, cudaMemcpyDeviceToHost);
 
-    // Assuming cufft_X is the one with correct values
+    // Assuming h_cufft_X is the one with correct values
     float max_diff = 0.0;
     for (int i = 0; i < N; i++) {
-        float diff = cabs(csub(cufft_X[i], h_myKernel_X[i]));
-        float ref = std::max(cabs(cufft_X[i]), 1e-6f);
+        float diff = cabs(csub(h_cufft_X[i], h_myKernel_X[i]));
+        float ref = std::max(cabs(h_cufft_X[i]), 1e-6f);
         float rel = diff / ref;
         max_diff = std::max(max_diff, rel);
         if (max_diff > THRESHOLD){
-            printf("(%f,%f) and (%f,%f) at [%d]\n", cufft_X[i].x, cufft_X[i].y, h_myKernel_X[i].x, h_myKernel_X[i].y, i);
+            printf("(%f,%f) and (%f,%f) at [%d]\n", h_cufft_X[i].x, h_cufft_X[i].y, h_myKernel_X[i].x, h_myKernel_X[i].y, i);
             ret = false;
             break;
         }
     }
 
-    free(cufft_X);
+    free(h_cufft_X);
     free(h_myKernel_X);
+    cudaFree(d_cufft_X);
     cudaFree(d_myKernel_X);
 
     return ret;

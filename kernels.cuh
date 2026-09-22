@@ -10,39 +10,29 @@
 // --- KERNELS --- //
 
 // CUFFT KERNEL: BASELINE
-__host__ void cuFFT(float2* h_X, int N) {
-
+__host__ void cuFFT(float2* d_X, int N, int blocksPerGrid, int threadsPerBlock) {
+    // blocks and threads aren't used, they're here just to match the template
     cufftHandle plan;
-    cufftComplex *d_X;
-    cudaMalloc((void**)&d_X, sizeof(cufftComplex)*N);
-    cudaMemcpy(d_X, h_X, sizeof(cufftComplex)*N, cudaMemcpyHostToDevice);
-
-    if (cudaGetLastError() != cudaSuccess) {
-        fprintf(stderr, "Cuda error: Failed to allocate\n");
-        return;
-    }
 
     if (cufftPlan1d(&plan, N, CUFFT_C2C, 1) != CUFFT_SUCCESS) {
         fprintf(stderr, "CUFFT error: Plan creation failed\n");
+        cufftDestroy(plan);
         return;
     }
 
     if (cufftExecC2C(plan, d_X, d_X, CUFFT_FORWARD) != CUFFT_SUCCESS) {
         fprintf(stderr, "CUFFT error: ExecC2C Forward failed\n");
+        cufftDestroy(plan);
         return;
     }
 
     if (cudaDeviceSynchronize() != cudaSuccess) {
         fprintf(stderr, "Cuda error: Failed to synchronize\n");
+        cufftDestroy(plan);
         return;
     }
 
-    size_t size = N * sizeof(float2);
-    cudaMemcpy(h_X, d_X, size, cudaMemcpyDeviceToHost);
-
-    cudaFree(d_X);
     cufftDestroy(plan);
-
     return;
 }
 
