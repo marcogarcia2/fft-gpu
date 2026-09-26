@@ -30,11 +30,11 @@ source "$SCRIPT_DIR/.env"
 # Function that copies all needed files to host
 copy_files_to_host() {
     sshpass -p "$PASSWD" scp -P "$PORT" \
-      "Makefile" \
-      "main.cu" \
-      "util.cuh" \
-      "kernels.cuh" \
-      "harness.cuh" \
+      "$SCRIPT_DIR/Makefile" \
+      "$SCRIPT_DIR/src/main.cu" \
+      "$SCRIPT_DIR/src/util.cuh" \
+      "$SCRIPT_DIR/src/kernels.cuh" \
+      "$SCRIPT_DIR/src/harness.cuh" \
       "${USER}@${HOST}:${REMOTE_PATH}"
 }
 
