@@ -34,6 +34,7 @@ copy_files_to_host() {
       "main.cu" \
       "util.cuh" \
       "kernels.cuh" \
+      "harness.cuh" \
       "${USER}@${HOST}:${REMOTE_PATH}"
 }
 

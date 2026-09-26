@@ -2,12 +2,21 @@
 #define UTIL_CUH
 
 #include <random>
+#include <fstream>
 
 #include "kernels.cuh"
 
 #define THRESHOLD 1e-3f
 
-using kernelFunction = void(*)(float2*, int, int, int);
+template <typename T, typename T2>
+using kernelFunction = void(*)(T2*, int, int, int);
+
+// Kernel struct
+struct kernelEntry {
+    const char* name;
+    kernelFunction<float, float2> float_fn;
+    kernelFunction<double, double2> double_fn;
+};
 
 // Struct used to store some constants used in results
 struct constants {
@@ -22,18 +31,19 @@ struct constants {
 };
 
 // Functions imported from "kernels.cuh"
-void FFT_Naive(float2 *d_X, int N, int blocksPerGrid, int threadsPerBlock);
-void cuFFT(float2* h_X, int N, int blocksPerGrid, int threadsPerBlock);
+template <typename T, typename T2>
+void cuFFT(T2* h_X, int N, int blocksPerGrid, int threadsPerBlock);
+template <typename T, typename T2>
+void FFT_Naive(T2 *d_X, int N, int blocksPerGrid, int threadsPerBlock);
+
 
 // --- COMPLEX ARITHMETHIC --- //
-
 __host__ __device__ inline float2 make_vec2(float x, float y) {
     return make_float2(x, y);
 }
 __host__ __device__ inline double2 make_vec2(double x, double y) {
     return make_double2(x, y);
 }
-
 template <typename T>
 __host__ __device__ inline T cmul(T a, T b) {
     return make_vec2(a.x*b.x - a.y*b.y, a.x*b.y + a.y*b.x);
@@ -54,10 +64,11 @@ __host__ __device__ inline auto cabs(T a) {
 
 // --- HARNESS HELPER FUNCTIONS --- //
 
-// Function that resets vector 
-void setVector(float2* X, int N) {
+// Function that resets vector
+template <typename T, typename T2>
+void setVector(T2* X, int N) {
     std::mt19937 rng(42);
-    std::uniform_real_distribution<float> dist(-1.0, 1.0);
+    std::uniform_real_distribution<T> dist(-1.0, 1.0);
     for (int i = 0 ; i < N; i++) {
         X[i].x = dist(rng);
         X[i].y = dist(rng);
@@ -65,20 +76,21 @@ void setVector(float2* X, int N) {
 }
 
 // Function that checks if a kernel is correct against cuFFT results
-bool checkKernel(kernelFunction myKernel, int N) {
+template <typename T, typename T2>
+bool checkKernel(kernelFunction<T, T2> myKernel, int N) {
 
     bool ret = true;
 
-    size_t size = N * sizeof(float2);
+    size_t size = N * sizeof(T2);
 
     // Baseline vectors
-    float2* h_cufft_X = (float2*)malloc(size);
-    float2* d_cufft_X;
+    T2* h_cufft_X = (T2*)malloc(size);
+    T2* d_cufft_X;
     cudaMalloc(&d_cufft_X, size);
     
     // MyKernel vectors
-    float2* h_myKernel_X = (float2*)malloc(size);
-    float2* d_myKernel_X;
+    T2* h_myKernel_X = (T2*)malloc(size);
+    T2* d_myKernel_X;
     cudaMalloc(&d_myKernel_X, size);
 
     // Calcs threads and blocks
@@ -86,13 +98,13 @@ bool checkKernel(kernelFunction myKernel, int N) {
     int blocksPerGrid = (N + threadsPerBlock - 1) / threadsPerBlock;
 
     // Fill both data vectors with values
-    setVector(h_cufft_X, N);
-    setVector(h_myKernel_X, N);
+    setVector<T, T2>(h_cufft_X, N);
+    setVector<T, T2>(h_myKernel_X, N);
     cudaMemcpy(d_cufft_X, h_cufft_X, size, cudaMemcpyHostToDevice);
     cudaMemcpy(d_myKernel_X, h_myKernel_X, size, cudaMemcpyHostToDevice);
 
     // Invokes baseline kernel
-    cuFFT(d_cufft_X, N, blocksPerGrid, threadsPerBlock);
+    cuFFT<T, T2>(d_cufft_X, N, blocksPerGrid, threadsPerBlock);
     cudaMemcpy(h_cufft_X, d_cufft_X, size, cudaMemcpyDeviceToHost);
     
     // Invokes myKernel
@@ -100,11 +112,11 @@ bool checkKernel(kernelFunction myKernel, int N) {
     cudaMemcpy(h_myKernel_X, d_myKernel_X, size, cudaMemcpyDeviceToHost);
 
     // Assuming h_cufft_X is the one with correct values
-    float max_diff = 0.0;
+    T max_diff = 0.0;
     for (int i = 0; i < N; i++) {
-        float diff = cabs(csub(h_cufft_X[i], h_myKernel_X[i]));
-        float ref = std::max(cabs(h_cufft_X[i]), 1e-6f);
-        float rel = diff / ref;
+        T diff = cabs(csub(h_cufft_X[i], h_myKernel_X[i]));
+        T ref = std::max(cabs(h_cufft_X[i]), static_cast<T>(1e-6f));
+        T rel = diff / ref;
         max_diff = std::max(max_diff, rel);
         if (max_diff > THRESHOLD){
             printf("(%f,%f) and (%f,%f) at [%d]\n", h_cufft_X[i].x, h_cufft_X[i].y, h_myKernel_X[i].x, h_myKernel_X[i].y, i);
