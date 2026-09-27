@@ -1,3 +1,5 @@
+.PHONY: all compile run clean cuda-compile cuda-run cuda-profile cuda-clean roofline
+
 # LOCAL Variables (CPU version)
 CXX = g++-14
 CXX_FLAGS =
@@ -7,6 +9,11 @@ CXX_LIBS = -fopenmp
 RCXX = nvcc
 RCXX_FLAGS = 
 RCXX_LIBS = -lcufft -lnvidia-ml
+NCU_FLAGS = --set full 
+PROF_DIR = /tmp/$(USER)_prof
+REP = $(TIMESTAMP)_$(KERNEL)
+GID = $(shell id -g)
+
 
 # LOCAL TARGETS:
 all: compile run clean
@@ -27,6 +34,12 @@ cuda-compile:
 
 cuda-run:
 	@ ./main
+
+cuda-profile:
+	@ mkdir -p $(PROF_DIR)
+	@ cp ./main $(PROF_DIR)/main
+	@ cd $(PROF_DIR) && sudo -S sh -c '/usr/bin/ncu $(NCU_FLAGS) -f -o $(REP) ./main $(KERNEL) && chown $(USER):$(GID) $(REP).ncu-rep'
+	@ cp $(PROF_DIR)/$(REP).ncu-rep ./
 
 cuda-clean:
 	@ rm -f main

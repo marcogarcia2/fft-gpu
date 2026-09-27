@@ -42,7 +42,7 @@ void runExperiment(std::ofstream& outf, kernelFunction<T, T2> kernel, std::strin
 
     // Allocating vectors
     size_t size = NX * sizeof(T2);
-    T2* h_X = (T2*)malloc(size);    // host vector
+    T2* h_X = (T2*)malloc(size);        // host vector
     T2* d_X;                            // device vector
     cudaMalloc(&d_X, size);
 
@@ -67,11 +67,7 @@ void runExperiment(std::ofstream& outf, kernelFunction<T, T2> kernel, std::strin
     }
     else printf("Kernel is correct.\n");
 
-    // Warmup (not necessary because checkKernel() is already being called)
-    // cudaMemcpy(d_X, h_X, size, cudaMemcpyHostToDevice);
-    // kernel(d_X, NX, blocksPerGrid, threadsPerBlock);
-    // cudaMemcpy(h_X, d_X, size, cudaMemcpyDeviceToHost);
-
+    // BENCHMARKING 
     for (int rep = 0; rep < RPT; rep++) {
 
         // Resets vector with original values

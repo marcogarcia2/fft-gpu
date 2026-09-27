@@ -256,4 +256,13 @@ void writeResultsCSV(std::ofstream& outf, float* kernel_times, float* H2D_times,
     outf << c.temp_begin << "," << c.temp_end << "," << gflops << "," << perf_per_watt << ","<< edp << std::endl;
 }
 
+// 
+kernelEntry* selectKernelByName(kernelEntry kernel_list[], int size, std::string input) {
+    for (int i = 0; i < size; i++) {
+        if (input == kernel_list[i].name)
+            return &kernel_list[i];
+    }
+    return nullptr;
+}
+
 #endif
