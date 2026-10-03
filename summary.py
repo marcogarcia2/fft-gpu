@@ -1,33 +1,16 @@
-import numpy as np
-import matplotlib.pyplot as plt
-from pathlib import Path
 import pandas as pd
-import json
 import sys
-import os
 
-RESULTS_FOLDER = Path('results')
-ROOFLINE_JSON = RESULTS_FOLDER / 'roofline.json'
-RESULTS_CSV = None
-
-def get_most_recent_results() -> Path:
-    csv_files = [f for f in os.listdir(RESULTS_FOLDER) if f.endswith(".csv")]
-    csv_files.sort()
-    return RESULTS_FOLDER / csv_files[-1]
+from arcane import setup_summary
 
 
 def main():
 
-    if len(sys.argv) == 2:
-        RESULTS_CSV = Path(sys.argv[1])
-    else:
-        RESULTS_CSV = get_most_recent_results()
-
-    roof = None
-    with open(ROOFLINE_JSON) as f:
-        roof = json.load(f)
-
-    df = pd.read_csv(RESULTS_CSV)
+    # Sets up all paths
+    results_csv = setup_summary(sys.argv)
+    
+    # CSV 
+    df = pd.read_csv(results_csv)
 
     for i in range(df.shape[0]):
         kernel_time_in_minutes = df['time_mean_ms'][i] * df['ACC'][i] * (df['RPT'][i]+1) / 1000.0 / 60.0
@@ -46,7 +29,7 @@ def main():
         print(f"Energy Stddev:\t\t {df['energy_std'][i]} mJ")
         print(f"GPU Temperature:\t {df['temp_begin'][i]}°C - {df['temp_end'][i]}°C")
         print(f"GFLOPS:\t\t\t {df['gflops'][i]}")
-        # print(f"Energy-Delay Product:\t {df['edp'][i]} Js")
+        print(f"Energy-Delay Product:\t {df['edp'][i]} Js")
         print()
 
 

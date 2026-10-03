@@ -9,10 +9,13 @@ CXX_LIBS = -fopenmp
 RCXX = nvcc
 RCXX_FLAGS = 
 RCXX_LIBS = -lcufft -lnvidia-ml
-NCU_FLAGS = --set full 
+# NCU_FLAGS = --set full 
 PROF_DIR = /tmp/$(USER)_prof
 REP = $(TIMESTAMP)_$(KERNEL)
 GID = $(shell id -g)
+
+NCU_FLAGS = --section SpeedOfLight --section MemoryWorkloadAnalysis \
+    --section Occupancy --section WarpStateStats --section SourceCounters \
 
 
 # LOCAL TARGETS:

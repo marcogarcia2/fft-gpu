@@ -14,6 +14,8 @@ int main(int argc, char *argv[]) {
     // Kernels
     static kernelEntry kernel_list [] {
         { "FFT_Naive", FFT_Naive<float, float2>, FFT_Naive<double, double2> },
+        { "FFT_Naive_OutOfPlace", FFT_Naive_reverseOutOfPlace<float, float2>, FFT_Naive_reverseOutOfPlace<double, double2> },
+        { "cuFFT", cuFFT<float, float2>, cuFFT<double, double2> },
     };
     const int KN_L_SIZE = sizeof(kernel_list)/sizeof(kernel_list[0]);
 
@@ -34,7 +36,6 @@ int main(int argc, char *argv[]) {
     }
     
     // --- REGULAR MODE (EXPERIMENTS) --- //
-    // 
     
     std::ofstream outf { createCSV() }; // CSV file that stores results
     
@@ -45,6 +46,8 @@ int main(int argc, char *argv[]) {
     // ACC (different values for float and double)
     int ACC_float_list[] = { 10000, 7000, 1000, 40, 10 };
     int ACC_double_list[] = { 5000, 2000, 300, 15, 3 };
+    // int ACC_float_list[] = { 500, 300, 100, 10, 3 }; // testing purposes
+    // int ACC_double_list[] = { 100, 75, 50, 2, 1 };
     
     // Precisions
     std::string fff = "float";

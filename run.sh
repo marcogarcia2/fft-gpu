@@ -3,7 +3,7 @@
 set -e
 
 timestamp=$(date +%Y%m%d_%H%M%S)
-kernel_list=("FFT_Naive")
+kernel_list=("FFT_Naive" "FFT_Naive_OutOfPlace" "cuFFT")
 
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 RESULTS_DIR="results/$timestamp"
@@ -62,7 +62,8 @@ if [[ -n $EXPERIMENTS ]]; then
   sshpass -p "$PASSWD" scp -P "$PORT" "${USER}@${HOST}:${REMOTE_PATH}/Results.csv" "$RESULTS_DIR/Results.csv" 
 
   # Summary
-  python3 summary.py $RESULTS_DIR/Results.csv
+  python3 summary.py $RESULTS_DIR
+  python3 plots.py $RESULTS_DIR
 fi
 
 

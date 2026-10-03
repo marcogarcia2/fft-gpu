@@ -70,7 +70,7 @@ __device__ int reverseBits(int i, int log2n) {
 }
 
 template <typename T, typename T2>
-__global__ void reverseBitsLocallyKernel(T2* d_X, int N, int log2n) {
+__global__ void reverseBitsInPlace(T2* d_X, int N, int log2n) {
     int i = blockDim.x * blockIdx.x + threadIdx.x;
     if (i >= N) return;
 
@@ -103,13 +103,40 @@ __global__ void FFT_Naive_butterflyKernel(T2* d_X, int N, int len) {
 template <typename T, typename T2>
 __host__ void FFT_Naive(T2 *d_X, int N, int blocksPerGrid, int threadsPerBlock) {
     int log2n = 0;
-    while((1u << log2n) < N) log2n++;
+    while ((1u << log2n) < N) log2n++;
 
-    reverseBitsLocallyKernel<T, T2><<<blocksPerGrid, threadsPerBlock>>>(d_X, N, log2n);
+    reverseBitsInPlace<T, T2><<<blocksPerGrid, threadsPerBlock>>>(d_X, N, log2n);
 
     for (int len = 2; len <= N; len <<= 1) {
         FFT_Naive_butterflyKernel<T, T2><<<blocksPerGrid, threadsPerBlock>>>(d_X, N, len);
     }
+}
+
+template <typename T, typename T2>
+__global__ void reverseBitsOutOfPlace(T2 *d_X, T2 *d_X_temp, int N, int log2n) {
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i >= N) return;
+
+    int j = reverseBits(i, log2n);
+    d_X_temp[j] = d_X[i];
+}
+
+template <typename T, typename T2>
+__host__ void FFT_Naive_reverseOutOfPlace(T2 *d_X, int N, int blocksPerGrid, int threadsPerBlock) {
+    int log2n = 0;
+    while ((1u << log2n) < N) log2n++;
+
+    size_t size = N * sizeof(T2);
+    T2* d_X_temp;
+    cudaMalloc(&d_X_temp, size);
+
+    reverseBitsOutOfPlace<T, T2><<<blocksPerGrid, threadsPerBlock>>>(d_X, d_X_temp, N, log2n);
+    for (int len = 2; len <=N; len <<= 1) {
+        FFT_Naive_butterflyKernel<T, T2><<<blocksPerGrid, threadsPerBlock>>>(d_X_temp, N, len);
+    }
+
+    cudaMemcpy(d_X, d_X_temp, size, cudaMemcpyDeviceToDevice);
+    cudaFree(d_X_temp);
 }
 
 #endif

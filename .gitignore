@@ -3,6 +3,7 @@
 main
 OUTPUT_SAMPLE.csv
 results/
+images/
 
 
 # Byte-compiled / optimized / DLL files
