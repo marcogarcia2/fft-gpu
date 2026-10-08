@@ -41,7 +41,7 @@ cuda-run:
 cuda-profile:
 	@ mkdir -p $(PROF_DIR)
 	@ cp ./main $(PROF_DIR)/main
-	@ cd $(PROF_DIR) && sudo -S sh -c '/usr/bin/ncu $(NCU_FLAGS) -f -o $(REP) ./main $(KERNEL) && chown $(USER):$(GID) $(REP).ncu-rep'
+	@ cd $(PROF_DIR) && sudo -S sh -c '/usr/bin/ncu $(NCU_FLAGS) -f -o $(REP) ./main "$(KERNEL)" && chown $(USER):$(GID) "$(REP).ncu-rep"'
 	@ cp $(PROF_DIR)/$(REP).ncu-rep ./
 
 cuda-clean:

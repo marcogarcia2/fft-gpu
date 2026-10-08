@@ -8,14 +8,25 @@
 
 #define THRESHOLD 1e-3f
 
+// Some FFT Kernels needs additional buffers, cuFFT needs a plan
+struct FFTContext {
+    void* workspace = nullptr;
+    cufftHandle plan = 0;
+    bool workspaceCreated = false;
+    bool planCreated = false;
+};
+
+// Kernel Function signature
 template <typename T, typename T2>
-using kernelFunction = void(*)(T2*, int, int, int);
+using kernelFunction = void(*)(T2*, int, FFTContext&);
 
 // Kernel struct
 struct kernelEntry {
     const char* name;
     kernelFunction<float, float2> float_fn;
     kernelFunction<double, double2> double_fn;
+    bool needsWorkspace;
+    bool needsPlan;
 };
 
 // Struct used to store some constants used in results
@@ -26,15 +37,14 @@ struct constants {
     int rpt;
     int acc;
     float thresh;
+    float time_setup_ms;
     unsigned int temp_begin;
     unsigned int temp_end;
 };
 
 // Functions imported from "kernels.cuh"
 template <typename T, typename T2>
-void cuFFT(T2* h_X, int N, int blocksPerGrid, int threadsPerBlock);
-template <typename T, typename T2>
-void FFT_Naive(T2 *d_X, int N, int blocksPerGrid, int threadsPerBlock);
+void cuFFT(T2* h_X, int N, FFTContext& ctx);
 
 
 // --- COMPLEX ARITHMETHIC --- //
@@ -64,6 +74,42 @@ __host__ __device__ inline auto cabs(T a) {
 
 // --- HARNESS HELPER FUNCTIONS --- //
 
+template <typename T>
+bool createCufftPlan(cufftHandle* plan, int N) {
+    constexpr bool is_float = std::is_same_v<T, float>;
+
+    // Plan creation
+    cufftResult planResult = is_float
+        ? cufftPlan1d(plan, N, CUFFT_C2C, 1)   // FP32
+        : cufftPlan1d(plan, N, CUFFT_Z2Z, 1);  // FP64
+
+    if (planResult != CUFFT_SUCCESS) {
+        fprintf(stderr, "CUFFT error: Plan creation failed\n");
+        return false;
+    }
+    return true;
+}
+
+template <typename T>
+FFTContext createFFTContext(size_t size, int N, bool needsWorkspace, bool needsPlan) {
+    FFTContext ctx;
+    if (needsWorkspace) {
+        cudaMalloc(&ctx.workspace, size);
+        ctx.workspaceCreated = true;
+    }
+
+    if (needsPlan) {
+        ctx.planCreated = createCufftPlan<T>(&ctx.plan, N);
+    }
+
+    return ctx;
+}
+
+void destroyFFTContext(FFTContext& ctx) {
+    if (ctx.workspaceCreated) cudaFree(ctx.workspace);
+    if (ctx.planCreated) cufftDestroy(ctx.plan);
+}
+
 // Function that resets vector
 template <typename T, typename T2>
 void setVector(T2* X, int N) {
@@ -77,7 +123,7 @@ void setVector(T2* X, int N) {
 
 // Function that checks if a kernel is correct against cuFFT results
 template <typename T, typename T2>
-bool checkKernel(kernelFunction<T, T2> myKernel, int N) {
+bool checkKernel(kernelFunction<T, T2> myKernel, int N, FFTContext& myKernelCtx) {
 
     bool ret = true;
 
@@ -93,9 +139,8 @@ bool checkKernel(kernelFunction<T, T2> myKernel, int N) {
     T2* d_myKernel_X;
     cudaMalloc(&d_myKernel_X, size);
 
-    // Calcs threads and blocks
-    int threadsPerBlock = 256;
-    int blocksPerGrid = (N + threadsPerBlock - 1) / threadsPerBlock;
+    // Context for cuFFT
+    FFTContext cufftCtx = createFFTContext<T>(size, N, false, true);
 
     // Fill both data vectors with values
     setVector<T, T2>(h_cufft_X, N);
@@ -103,12 +148,12 @@ bool checkKernel(kernelFunction<T, T2> myKernel, int N) {
     cudaMemcpy(d_cufft_X, h_cufft_X, size, cudaMemcpyHostToDevice);
     cudaMemcpy(d_myKernel_X, h_myKernel_X, size, cudaMemcpyHostToDevice);
 
-    // Invokes baseline kernel
-    cuFFT<T, T2>(d_cufft_X, N, blocksPerGrid, threadsPerBlock);
+    // Invokes cuFFT kernel (baseline)
+    cuFFT<T, T2>(d_cufft_X, N, cufftCtx);
     cudaMemcpy(h_cufft_X, d_cufft_X, size, cudaMemcpyDeviceToHost);
     
     // Invokes myKernel
-    myKernel(d_myKernel_X, N, blocksPerGrid, threadsPerBlock);
+    myKernel(d_myKernel_X, N, myKernelCtx);
     cudaMemcpy(h_myKernel_X, d_myKernel_X, size, cudaMemcpyDeviceToHost);
 
     // Assuming h_cufft_X is the one with correct values
@@ -127,6 +172,7 @@ bool checkKernel(kernelFunction<T, T2> myKernel, int N) {
 
     free(h_cufft_X);
     free(h_myKernel_X);
+    destroyFFTContext(cufftCtx);
     cudaFree(d_cufft_X);
     cudaFree(d_myKernel_X);
 
@@ -206,11 +252,11 @@ double ic95(float* vector, int N) {
 // Create a CSV file with the first line with columns names
 std::ofstream createCSV() {
     std::ofstream outf { "Results.csv" };
-    outf << "kernel_version,N,precision,RPT,ACC,threshold,";              // harness
-    outf << "time_mean_ms,time_median_ms,time_std,time_ci95,";            // kernel
-    outf << "time_h2d_ms,time_d2h_ms,";                                   // transfers
-    outf << "energy_mean_mj,energy_median_mj,energy_std,energy_ci95,";    // energy
-    outf << "temp_begin,temp_end,gflops,perf_per_watt,edp" << std::endl;  // other
+    outf << "kernel_version,N,precision,RPT,ACC,threshold,";                   // harness
+    outf << "time_setup_ms,time_mean_ms,time_median_ms,time_std,time_ci95,";   // kernel
+    outf << "time_h2d_ms,time_d2h_ms,";                                        // transfers
+    outf << "energy_mean_mj,energy_median_mj,energy_std,energy_ci95,";         // energy
+    outf << "temp_begin,temp_end,gflops,perf_per_watt,edp" << std::endl;       // other
     return outf;
 }
 
@@ -224,7 +270,7 @@ void writeResultsCSV(std::ofstream& outf, float* kernel_times, float* H2D_times,
     double kernel_median = median(kernel_times, c.rpt);
     double kernel_std = stddev(kernel_times, c.rpt);
     double kernel_ic95 = ic95(kernel_times, c.rpt);
-    outf << kernel_mean << "," << kernel_median << "," << kernel_std << "," << kernel_ic95 << ",";
+    outf << c.time_setup_ms << "," << kernel_mean << "," << kernel_median << "," << kernel_std << "," << kernel_ic95 << ",";
 
     //* Data transfer statistics (in milliseconds)
     double H2D_mean = mean(H2D_times, c.rpt);

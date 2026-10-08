@@ -13,9 +13,10 @@ int main(int argc, char *argv[]) {
     
     // Kernels
     static kernelEntry kernel_list [] {
-        { "FFT_Naive", FFT_Naive<float, float2>, FFT_Naive<double, double2> },
-        { "FFT_Naive_OutOfPlace", FFT_Naive_reverseOutOfPlace<float, float2>, FFT_Naive_reverseOutOfPlace<double, double2> },
-        { "cuFFT", cuFFT<float, float2>, cuFFT<double, double2> },
+        { "FFT_Naive", FFT_Naive<float, float2>, FFT_Naive<double, double2>, false, false },
+        // { "FFT_Naive_OutOfPlace", FFT_Naive_reverseOutOfPlace<float, float2>, FFT_Naive_reverseOutOfPlace<double, double2>, true, false },
+        { "FFT_Stockham", FFT_Stockham<float, float2>, FFT_Stockham<double, double2>, true, false },
+        { "cuFFT", cuFFT<float, float2>, cuFFT<double, double2>, false, true },
     };
     const int KN_L_SIZE = sizeof(kernel_list)/sizeof(kernel_list[0]);
 
@@ -25,8 +26,8 @@ int main(int argc, char *argv[]) {
         kernelEntry* kernel = selectKernelByName(kernel_list, KN_L_SIZE, argv[1]);
         
         if (kernel) {
-            profiler<float, float2>(kernel->float_fn);
-            profiler<double, double2>(kernel->double_fn);
+            profiler<float, float2>(kernel->float_fn, kernel->needsWorkspace, kernel->needsPlan);
+            profiler<double, double2>(kernel->double_fn, kernel->needsWorkspace, kernel->needsPlan);
         }
         
         else 
@@ -44,8 +45,8 @@ int main(int argc, char *argv[]) {
     const int NX_L_SIZE = sizeof(NX_list)/sizeof(NX_list[0]);
     
     // ACC (different values for float and double)
-    int ACC_float_list[] = { 10000, 7000, 1000, 40, 10 };
-    int ACC_double_list[] = { 5000, 2000, 300, 15, 3 };
+    int ACC_float_list[] = { 20000, 10000, 2000, 100, 30 };
+    int ACC_double_list[] = { 10000, 5000, 600, 30, 10 };
     // int ACC_float_list[] = { 500, 300, 100, 10, 3 }; // testing purposes
     // int ACC_double_list[] = { 100, 75, 50, 2, 1 };
     
@@ -64,8 +65,10 @@ int main(int argc, char *argv[]) {
             kernelEntry kernel = kernel_list[k_idx];
 
             // Run experiments
-            runExperiment<float, float2>(outf, kernel.float_fn, kernel.name, NX, ACC_f, fff);
-            runExperiment<double, double2>(outf, kernel.double_fn, kernel.name, NX, ACC_d, ddd);
+            runExperiment<float, float2>(outf, kernel.float_fn, kernel.name, NX, ACC_f, fff,
+                                         kernel.needsWorkspace, kernel.needsPlan);
+            runExperiment<double, double2>(outf, kernel.double_fn, kernel.name, NX, ACC_d, ddd,
+                                           kernel.needsWorkspace, kernel.needsPlan);
         }
     }
 

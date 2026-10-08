@@ -3,7 +3,7 @@
 set -e
 
 timestamp=$(date +%Y%m%d_%H%M%S)
-kernel_list=("FFT_Naive" "FFT_Naive_OutOfPlace" "cuFFT")
+kernel_list=("FFT_Naive" "FFT_Naive_OutOfPlace" "FFT_Stockham" "cuFFT")
 
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 RESULTS_DIR="results/$timestamp"
@@ -70,10 +70,10 @@ fi
 # Profiling kernels with NCU
 if [[ -n $PROFILER ]]; then
   mkdir -p $RESULTS_DIR
-  for k in ${kernel_list[@]}; do
+  for k in "${kernel_list[@]}"; do
     # Running profiler
     echo "Profiling $k..."
-    printf '%s\n' "$PASSWD" | sshpass -p "$PASSWD" ssh -p "$PORT" "${USER}@${HOST}" "cd $REMOTE_PATH && make cuda-profile KERNEL=$k TIMESTAMP=$timestamp"
+    printf '%s\n' "$PASSWD" | sshpass -p "$PASSWD" ssh -p "$PORT" "${USER}@${HOST}" "cd $REMOTE_PATH && make cuda-profile KERNEL=\"$k\" TIMESTAMP=$timestamp"
 
     # Copying result NCU file
     echo "Copying results back to local..."

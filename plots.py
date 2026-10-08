@@ -7,11 +7,13 @@ import sys
 from arcane import setup_plots
 
 PALETTE = { # OKABE_ITO
-    'FFT_Naive':             '#0072B2',   # TODO: final color
-    'FFT_Naive_OutOfPlace':  '#E69F00',   # TODO: final color
-    'cuFFT':                 '#009E73',   # TODO: placeholder
-    'FFT_Radix4':            '#D55E00',   # TODO: placeholder
-    'FFT_Other':             '#CC79A7',   # TODO: placeholder
+    'FFT_Naive':                 '#0072B2',
+    'FFT_Stockham':              '#E69F00',
+    'FFT_Naive_OutOfPlace':      '#56B4E9',
+    'Placeholder 1':             '#F0E442',
+    'Placeholder 2':             '#D55E00',
+    'Placeholder 3':             '#CC79A7',
+    'cuFFT':                     '#009E73',
 }
 DEFAULT_COLOR = '#000000' # used for any kernel not listed above
 
@@ -118,7 +120,7 @@ def main():
 
     output_folder, results_csv, roofline_json, results_profile = setup_plots(sys.argv)
     
-    df = pd.read_csv(results_csv)
+    df = pd.read_csv(results_csv, skipinitialspace=True)
     
     plot_1(df, output_folder)
     plot_1(df, output_folder, FP32=True, FP64=False)

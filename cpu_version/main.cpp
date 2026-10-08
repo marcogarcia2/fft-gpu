@@ -7,8 +7,8 @@
 int main(int argc, char *argv[]) {
 
     //Kernels list
-    std::vector<KernelFn> kernels = { rec_FFT, iter_FFT, parallel_FFT, collapsed_parallel_FFT };
-    std::vector<std::string> kernel_names = { "Recursive FFT", "Iteractive FFT", "Parallel FFT", "Collapsed Parallel FFT" };
+    std::vector<KernelFn> kernels = { parallel_FFT, collapsed_parallel_FFT, stockham_FFT };
+    std::vector<std::string> kernel_names = { "Parallel FFT", "Collapsed Parallel FFT", "Stockham FFT" };
     KernelFn kernel;
 
     // Signals and N

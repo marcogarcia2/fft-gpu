@@ -1,17 +1,20 @@
 #ifndef HARNESS_CUH
 #define HARNESS_CUH
 
+#include <type_traits>
 #include <nvml.h>
 
 #include "util.cuh"
 
-#define RPT     100
+#define RPT     20
 
 template <typename T, typename T2>
-void runExperiment(std::ofstream& outf, kernelFunction<T, T2> kernel, std::string kname, int NX, int ACC, std::string precision) {
+void runExperiment(std::ofstream& outf, kernelFunction<T, T2> kernel, std::string kname, int NX, int ACC, std::string precision, bool needsWorkspace, bool needsPlan) {
 
     // CUDA Events Setup
-    cudaEvent_t H2D_start, H2D_stop, D2H_start, D2H_stop, kernel_start, kernel_stop;
+    cudaEvent_t setup_start, setup_stop, H2D_start, H2D_stop, D2H_start, D2H_stop, kernel_start, kernel_stop;
+    cudaEventCreate(&setup_start);
+    cudaEventCreate(&setup_stop);
     cudaEventCreate(&H2D_start);
     cudaEventCreate(&H2D_stop);
     cudaEventCreate(&D2H_start);
@@ -25,11 +28,15 @@ void runExperiment(std::ofstream& outf, kernelFunction<T, T2> kernel, std::strin
     nvmlDeviceGetHandleByIndex(0, &device);
     
     // Time variables
-    float H2D_ms, D2H_ms, kernel_ms;
+    float time_setup_ms, H2D_ms, D2H_ms, kernel_ms;
 
     // Energy variables
     unsigned long long energy_start, energy_stop;
     float kernel_energy_mj;
+
+    // Clock
+    // unsigned int sm_mhz;
+    // nvmlDeviceGetClockInfo(device, NVML_CLOCK_SM, &sm_mhz);
 
     // Temperature variables
     unsigned int temp_begin, temp_end;
@@ -46,10 +53,6 @@ void runExperiment(std::ofstream& outf, kernelFunction<T, T2> kernel, std::strin
     T2* d_X;                            // device vector
     cudaMalloc(&d_X, size);
 
-    // Threads and Blocks
-	int threadsPerBlock = 256;
-	int blocksPerGrid = (NX + threadsPerBlock - 1) / threadsPerBlock;
-
     // EXPERIMENT STARTED
     std::cout << "Experiment Started: ";
     std::cout << kname << ", ";
@@ -60,8 +63,15 @@ void runExperiment(std::ofstream& outf, kernelFunction<T, T2> kernel, std::strin
     // Temperature before experiment
     nvmlDeviceGetTemperature(device, NVML_TEMPERATURE_GPU, &temp_begin);
 
+    // FFT Context creation
+    cudaEventRecord(setup_start);
+    FFTContext ctx = createFFTContext<T>(size, NX, needsWorkspace, needsPlan);
+    cudaEventRecord(setup_stop);
+    cudaEventSynchronize(setup_stop);
+    cudaEventElapsedTime(&time_setup_ms, setup_start, setup_stop);
+
     // Check if all kernels are correct with cuFFT before proceeding
-    if (!checkKernel<T, T2>(kernel, NX)){
+    if (!checkKernel<T, T2>(kernel, NX, ctx)){
         fprintf(stderr, "Error: MyKernel is not correct (NX = %d).\n", NX);
         // return 1;
     }
@@ -84,7 +94,7 @@ void runExperiment(std::ofstream& outf, kernelFunction<T, T2> kernel, std::strin
         nvmlDeviceGetTotalEnergyConsumption(device, &energy_start);
         cudaEventRecord(kernel_start);
         for (int k = 0; k < ACC; k++) {
-            kernel(d_X, NX, blocksPerGrid, threadsPerBlock);            // Kernel execution
+            kernel(d_X, NX, ctx);            // Kernel execution
         }
         cudaEventRecord(kernel_stop);
         cudaEventSynchronize(kernel_stop);
@@ -122,10 +132,14 @@ void runExperiment(std::ofstream& outf, kernelFunction<T, T2> kernel, std::strin
     c.thresh = THRESHOLD;
     c.temp_begin = temp_begin;
     c.temp_end = temp_end;
+    c.time_setup_ms = time_setup_ms;
 
     // Writing down results to CSV file
     writeResultsCSV(outf, kernel_times, H2D_times, D2H_times, energies, c);
     printf("Results saved.\n");
+
+    // Destroy FFTContext memory
+    destroyFFTContext(ctx);
 
     // Frees vector memory
     free(h_X);
@@ -141,6 +155,8 @@ void runExperiment(std::ofstream& outf, kernelFunction<T, T2> kernel, std::strin
     nvmlShutdown();
 
     // Destroy CUDA Events
+    cudaEventDestroy(setup_start);
+    cudaEventDestroy(setup_stop);
     cudaEventDestroy(H2D_start);
     cudaEventDestroy(H2D_stop);
     cudaEventDestroy(D2H_start);

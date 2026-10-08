@@ -200,4 +200,51 @@ std::vector<Complex> collapsed_parallel_FFT(const std::vector<double>& f_real) {
 	return f;
 }
 
+void stockham_stage(const std::vector<Complex>& f_read, std::vector<Complex>& f_write, const std::size_t N, const std::size_t len) {
+	// N = 8                   : número de elementos no vetor
+	// len = {2, 4, 8}         : tamanho da DFT que este estágio produz
+	// stride = N / len        : quantos subproblemas existem depois do estágio, =N distância entre dois operandos
+	// b = {0... N/2}          : índice global da borboleta
+	// s = b / stride          : posição do coeficiente dentro do subproblema, define o twiddle
+	// subproblem = b % stride : índice do subproblema que esta borboleta está processando
+
+	// a ideia é que um coeficiente `j` do subproblema `r` fica na posição `p`, tal que:
+	// p = r + (j * Nº de subproblemas)
+	// 
+
+	// leitura:
+	// escrita: 
+
+	const std::size_t stride = N / len;	// stride é a distancia do salto // numericamente igual ao numero de sub problemas
+
+	#pragma omp parallel for
+	for (int b = 0; b < N/2; b++) {
+		const std::size_t s = b / stride;           // Posição dentro do subproblema atual
+		const std::size_t subproblem = b % stride;  // Índice global do subproblema
+
+		const double arg = -2.0 * M_PI * s / len;
+		const Complex W (std::cos(arg), std::sin(arg));
+
+		const Complex u = f_read[subproblem + stride*(2*s)];
+		const Complex v = f_read[subproblem + stride*(2*s + 1)] * W;
+
+		f_write[b]       = u + v;
+		f_write[b + N/2] = u - v;
+	}
+}
+
+std::vector<Complex> stockham_FFT(const std::vector<double>& f_real) {
+	std::size_t N { f_real.size() };
+	std::vector<Complex> fA (f_real.begin(), f_real.end()), fB(N);
+
+	bool in_A = true;
+	for(int len = 2; len <= N; len <<= 1) {
+		if (in_A) stockham_stage(fA, fB, N, len);
+		else      stockham_stage(fB, fA, N, len);
+		in_A = !in_A;
+	}
+
+	return in_A ? fA : fB;
+}
+
 #endif
