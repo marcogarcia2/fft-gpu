@@ -6,7 +6,6 @@
 #include "harness.cuh"
 #include "profiler.cuh"
 
-
 int main(int argc, char *argv[]) {
     
     setvbuf(stdout, NULL, _IOLBF, 0); // synchronous prints
@@ -21,23 +20,17 @@ int main(int argc, char *argv[]) {
     const int KN_L_SIZE = sizeof(kernel_list)/sizeof(kernel_list[0]);
 
     // --- PROFILE MODE (NCU) --- //
-    if (argc >= 2) {
-
-        kernelEntry* kernel = selectKernelByName(kernel_list, KN_L_SIZE, argv[1]);
-        
-        if (kernel) {
-            profiler<float, float2>(kernel->float_fn, kernel->needsWorkspace, kernel->needsPlan);
-            profiler<double, double2>(kernel->double_fn, kernel->needsWorkspace, kernel->needsPlan);
-        }
-        
-        else 
-            printf("Kernel '%s' not found.", argv[1]);
-        
-        return 0;
+    if (argc == 4) {
+        return profiler(argc, argv, kernel_list, KN_L_SIZE);
+    } 
+    else if (argc == 2 || argc == 3 || argc >= 5) {
+        fprintf(stderr, "Usage: %s <kernel_name> <N> <precision>\n", argv[0]);
+        return 1;
     }
-    
+
+
+
     // --- REGULAR MODE (EXPERIMENTS) --- //
-    
     std::ofstream outf { createCSV() }; // CSV file that stores results
     
     // NX
@@ -45,14 +38,10 @@ int main(int argc, char *argv[]) {
     const int NX_L_SIZE = sizeof(NX_list)/sizeof(NX_list[0]);
     
     // ACC (different values for float and double)
-    int ACC_float_list[] = { 20000, 10000, 2000, 100, 30 };
-    int ACC_double_list[] = { 10000, 5000, 600, 30, 10 };
-    // int ACC_float_list[] = { 500, 300, 100, 10, 3 }; // testing purposes
-    // int ACC_double_list[] = { 100, 75, 50, 2, 1 };
-    
-    // Precisions
-    std::string fff = "float";
-    std::string ddd = "double";
+    // int ACC_float_list[] = { 20000, 10000, 2000, 100, 30 };
+    // int ACC_double_list[] = { 10000, 5000, 600, 30, 10 };
+    int ACC_float_list[] = { 500, 300, 100, 10, 3 }; // testing purposes
+    int ACC_double_list[] = { 100, 75, 50, 2, 1 };
     
     // NX Loop
     for (int n_idx = 0; n_idx < NX_L_SIZE; n_idx++) {
@@ -65,9 +54,9 @@ int main(int argc, char *argv[]) {
             kernelEntry kernel = kernel_list[k_idx];
 
             // Run experiments
-            runExperiment<float, float2>(outf, kernel.float_fn, kernel.name, NX, ACC_f, fff,
+            runExperiment<float, float2>(outf, kernel.float_fn, kernel.name, NX, ACC_f, FP32_STRING,
                                          kernel.needsWorkspace, kernel.needsPlan);
-            runExperiment<double, double2>(outf, kernel.double_fn, kernel.name, NX, ACC_d, ddd,
+            runExperiment<double, double2>(outf, kernel.double_fn, kernel.name, NX, ACC_d, FP64_STRING,
                                            kernel.needsWorkspace, kernel.needsPlan);
         }
     }

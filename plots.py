@@ -3,16 +3,17 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from pathlib import Path
 import sys
+import math
 
 from arcane import setup_plots
 
 PALETTE = { # OKABE_ITO
     'FFT_Naive':                 '#0072B2',
     'FFT_Stockham':              '#E69F00',
-    'FFT_Naive_OutOfPlace':      '#56B4E9',
     'Placeholder 1':             '#F0E442',
     'Placeholder 2':             '#D55E00',
     'Placeholder 3':             '#CC79A7',
+    'FFT_Naive_OutOfPlace':      '#56B4E9',
     'cuFFT':                     '#009E73',
 }
 DEFAULT_COLOR = '#000000' # used for any kernel not listed above
@@ -41,33 +42,111 @@ def pow2_ticks(ax, ns):
     ax.minorticks_off()
 
 
-def plot_0():
-    pass    
+# Roofline Model: the most important one
+def plot_0(out_folder: Path, df: pd.DataFrame, roofline_json: dict, results_profile: dict, FP32: bool=False, FP64: bool=False):
+
+    if (not FP32 and not FP64): return
+    if (FP32 and FP64): return
+
+    # Assembling the results with data
+    results = {}
+    for i in range(df.shape[0]):
+        kernel_name = df['kernel_version'][i]
+        precision   = df['precision'][i]
+        N_val       = df['N'][i]
+        gflops      = df['gflops'][i]
+
+        if (precision == 'float'  and FP32 == False): continue
+        if (precision == 'double' and FP64 == False): continue
+
+        # Filters N
+        if (N_val != 1 << 24): continue
+
+        read_write_bytes = results_profile[kernel_name][precision][N_val]
+        sum_bytes = read_write_bytes[0] + read_write_bytes[1]
+        arithmetic_intensity = 5 * N_val * math.log(N_val, 2) / sum_bytes
+
+        if kernel_name not in results: results[kernel_name] = {}
+        if precision not in results[kernel_name]: results[kernel_name][precision] = {}
+        results[kernel_name][precision][N_val] = (arithmetic_intensity, gflops)
+
+    fig, ax = plt.subplots(figsize=(6, 3.5)) # 
+
+    # Plot
+    # For each Kernel
+    for kernel, _ in results.items():
+        ## For each precision
+        for pr, data in _.items():
+            n = []
+            ar_in = []
+            gfl = []
+            for N_val, t in data.items():
+                n.append(N_val)
+                ar_in.append(t[0])
+                gfl.append(t[1])
+
+            prec_name = f" ({pr})" if FP32 and FP64 is True else ""
+            label = kernel + prec_name
+            marker = 'o' if FP32 else 's'
+            ax.plot(ar_in, gfl, color=PALETTE.get(kernel, DEFAULT_COLOR),
+                        marker=marker,
+                        linestyle='none',
+                        label=label)
+
+    # Plot Rooflines
+    peak_bw = roofline_json['peak_bandwidth_gbps']
+    peak_gflops = roofline_json['peak_gflops_fp32'] if FP32 else roofline_json['peak_gflops_fp64']
+    x = np.logspace(-1, 7, 200)                       # 0.1 a 100 FLOP/byte
+    roof = np.minimum(peak_bw * x, peak_gflops)
+    ax.plot(x, roof, color='black', linewidth=1.5)
+
+    ridge = peak_gflops / peak_bw                     # ponto de inflexão
+    ax.axvline(ridge, color='gray', linestyle=':', linewidth=0.8)
+
+    # Style 
+    style_axes(ax)
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    ax.set_ylabel('Desempenho (GFLOP/s)')
+    ax.set_xlabel('Intensidade aritmética (FLOP/byte)')
+    ax.legend(frameon=False, loc='upper left')
+
+    # Saving
+    prec_name = ""
+    if (FP32): prec_name = "_FP32" 
+    else     : prec_name = "_FP64" 
+    file_name = "plot_00" + prec_name + ".pdf"
+    out_path = out_folder / file_name
+    fig.savefig(out_path, bbox_inches='tight')
+    plt.show()
+
+
 
 # Mean-time per vector size
-def plot_1(df: pd.DataFrame, out_folder: Path, FP32: bool=True, FP64: bool=True) -> None:
-    
-    if (not FP32 and not FP64): return # both can't be false at the same time
+def plot_1(out_folder: Path, df: pd.DataFrame, FP32: bool=True, FP64: bool=True) -> None:
 
-    fig, ax = plt.subplots(figsize=(6, 3.5)) # final size in inches
+    if (not FP32 and not FP64): return # both can't be false at the same time
 
     # Assembling the results dictionary with data
     results = {}
     for i in range(df.shape[0]):
-        kernel_name = df['kernel_version'][i]
-        precision = df['precision'][i]
-        N_val = df['N'][i]
+        kernel_name  = df['kernel_version'][i]
+        precision    = df['precision'][i]
+        N_val        = df['N'][i]
         time_mean_ms = df['time_mean_ms'][i]
-        time_ci95 = df['time_ci95'][i]
+        time_ci95    = df['time_ci95'][i]
 
+        # Filtering
         if (precision == 'float'  and FP32 is False): continue
         if (precision == 'double' and FP64 is False): continue
 
+        # Appending results
         if kernel_name not in results: results[kernel_name] = {}
         if precision not in results[kernel_name]: results[kernel_name][precision] = {}
         results[kernel_name][precision][N_val] = (time_mean_ms, time_ci95)
 
     # Plot
+    fig, ax = plt.subplots(figsize=(6, 3.5)) # final size in inches
 
     # For each Kernel
     for kernel, _ in results.items():
@@ -100,8 +179,8 @@ def plot_1(df: pd.DataFrame, out_folder: Path, FP32: bool=True, FP64: bool=True)
 
     # Saving
     prec_name = ""
-    if (FP32 and not FP64): prec_name = "_FP32" 
-    if (FP64 and not FP32): prec_name = "_FP64" 
+    if (FP32 and not FP64): prec_name = "_FP32"
+    if (FP64 and not FP32): prec_name = "_FP64"
     file_name = "plot_01" + prec_name + ".pdf"
     out_path = out_folder / file_name
     fig.savefig(out_path, bbox_inches='tight')
@@ -118,13 +197,16 @@ def plot_4():
 def main():
     apply_academic_style()
 
-    output_folder, results_csv, roofline_json, results_profile = setup_plots(sys.argv)
-    
-    df = pd.read_csv(results_csv, skipinitialspace=True)
-    
-    plot_1(df, output_folder)
-    plot_1(df, output_folder, FP32=True, FP64=False)
-    plot_1(df, output_folder, FP32=False, FP64=True)
+    output_folder, results_df, roofline_json, results_profile = setup_plots(sys.argv)
+
+    # Plot 0: Roofline Model
+    plot_0(output_folder, results_df, roofline_json, results_profile, FP32=True)
+    plot_0(output_folder, results_df, roofline_json, results_profile, FP64=True)
+
+    # Plot 1: Kernel Performance
+    plot_1(output_folder, results_df)
+    plot_1(output_folder, results_df, FP32=True, FP64=False)
+    plot_1(output_folder, results_df, FP32=False, FP64=True)
 
 
 if __name__ == '__main__':

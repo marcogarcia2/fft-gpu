@@ -23,6 +23,7 @@ def main():
         print(f"Num. ACC:\t\t {df['ACC'][i]}")
         print(f"Mean Kernel Time:\t {df['time_mean_ms'][i]} ms")
         print(f"Setup time:\t\t {df['time_setup_ms'][i]} ms")
+        print(f"SM Clock:\t\t {df['sm_mhz_begin'][i]} MHz - {df['sm_mhz_end'][i]} MHz")
         print(f"Kernel Time Stddev:\t {df['time_std'][i]} ms")
         print(f"Mean H2D Time:\t\t {df['time_h2d_ms'][i]} ms")
         print(f"Mean D2H Time:\t\t {df['time_d2h_ms'][i]} ms")

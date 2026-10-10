@@ -6,7 +6,9 @@
 
 #include "kernels.cuh"
 
-#define THRESHOLD 1e-3f
+#define THRESHOLD       1e-3f
+#define FP32_STRING     "float"
+#define FP64_STRING     "double"
 
 // Some FFT Kernels needs additional buffers, cuFFT needs a plan
 struct FFTContext {
@@ -40,6 +42,8 @@ struct constants {
     float time_setup_ms;
     unsigned int temp_begin;
     unsigned int temp_end;
+    unsigned int sm_mhz_begin;
+    unsigned int sm_mhz_end;
 };
 
 // Functions imported from "kernels.cuh"
@@ -252,11 +256,12 @@ double ic95(float* vector, int N) {
 // Create a CSV file with the first line with columns names
 std::ofstream createCSV() {
     std::ofstream outf { "Results.csv" };
-    outf << "kernel_version,N,precision,RPT,ACC,threshold,";                   // harness
-    outf << "time_setup_ms,time_mean_ms,time_median_ms,time_std,time_ci95,";   // kernel
-    outf << "time_h2d_ms,time_d2h_ms,";                                        // transfers
-    outf << "energy_mean_mj,energy_median_mj,energy_std,energy_ci95,";         // energy
-    outf << "temp_begin,temp_end,gflops,perf_per_watt,edp" << std::endl;       // other
+    outf << "kernel_version,N,precision,RPT,ACC,threshold,";                        // harness
+    outf << "time_setup_ms,time_mean_ms,time_median_ms,time_std,time_ci95,";        // kernel
+    outf << "time_h2d_ms,time_d2h_ms,";                                             // transfers
+    outf << "energy_mean_mj,energy_median_mj,energy_std,energy_ci95,";              // energy
+    outf << "temp_begin,temp_end,sm_mhz_begin,sm_mhz_end,gflops,perf_per_watt,edp"; // other
+    outf << std::endl;       
     return outf;
 }
 
@@ -285,6 +290,12 @@ void writeResultsCSV(std::ofstream& outf, float* kernel_times, float* H2D_times,
     outf << energy_mean << "," << energy_median << "," << energy_std << "," << energy_ic95 << ",";
 
     //* Other data
+    
+    // Temperature
+    outf << c.temp_begin << "," << c.temp_end << ",";
+
+    // Clock
+    outf << c.sm_mhz_begin << "," << c.sm_mhz_end << ",";
 
     // GFLOPS (giga float-operations per second)
     double flops = 5.0 * c.nx * log2(c.nx);
@@ -299,7 +310,7 @@ void writeResultsCSV(std::ofstream& outf, float* kernel_times, float* H2D_times,
     // Energy-Delay Product (J*s)
     double edp = energy_in_joules * kernel_time_in_seconds;
 
-    outf << c.temp_begin << "," << c.temp_end << "," << gflops << "," << perf_per_watt << ","<< edp << std::endl;
+    outf << gflops << "," << perf_per_watt << ","<< edp << std::endl;
 }
 
 // 

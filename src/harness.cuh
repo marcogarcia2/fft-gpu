@@ -33,13 +33,10 @@ void runExperiment(std::ofstream& outf, kernelFunction<T, T2> kernel, std::strin
     // Energy variables
     unsigned long long energy_start, energy_stop;
     float kernel_energy_mj;
-
-    // Clock
-    // unsigned int sm_mhz;
-    // nvmlDeviceGetClockInfo(device, NVML_CLOCK_SM, &sm_mhz);
-
-    // Temperature variables
+    
+    // Temperature and clock variables
     unsigned int temp_begin, temp_end;
+    unsigned int sm_mhz_begin, sm_mhz_end;
 
     // Allocating results vectors
     float* kernel_times = (float*)malloc(sizeof(float) * RPT);
@@ -59,9 +56,6 @@ void runExperiment(std::ofstream& outf, kernelFunction<T, T2> kernel, std::strin
     std::cout << precision << ", "; 
     std::cout << "NX=" << NX << ", "; 
     std::cout << "ACC=" << ACC << std::endl; 
-    
-    // Temperature before experiment
-    nvmlDeviceGetTemperature(device, NVML_TEMPERATURE_GPU, &temp_begin);
 
     // FFT Context creation
     cudaEventRecord(setup_start);
@@ -76,6 +70,10 @@ void runExperiment(std::ofstream& outf, kernelFunction<T, T2> kernel, std::strin
         // return 1;
     }
     else printf("Kernel is correct.\n");
+
+    // Temperature and Clock before experiment
+    nvmlDeviceGetTemperature(device, NVML_TEMPERATURE_GPU, &temp_begin);
+    nvmlDeviceGetClockInfo(device, NVML_CLOCK_SM, &sm_mhz_begin);
 
     // BENCHMARKING 
     for (int rep = 0; rep < RPT; rep++) {
@@ -119,8 +117,9 @@ void runExperiment(std::ofstream& outf, kernelFunction<T, T2> kernel, std::strin
         energies[rep] = kernel_energy_mj;
     }
 
-    // Temperature after experiment
+    // Temperature and Clock after experiment
     nvmlDeviceGetTemperature(device, NVML_TEMPERATURE_GPU, &temp_end);
+    nvmlDeviceGetClockInfo(device, NVML_CLOCK_SM, &sm_mhz_end);
 
     // Constants used in results
     struct constants c {};
@@ -130,9 +129,11 @@ void runExperiment(std::ofstream& outf, kernelFunction<T, T2> kernel, std::strin
     c.rpt = RPT;
     c.acc = ACC;
     c.thresh = THRESHOLD;
+    c.time_setup_ms = time_setup_ms;
     c.temp_begin = temp_begin;
     c.temp_end = temp_end;
-    c.time_setup_ms = time_setup_ms;
+    c.sm_mhz_begin = sm_mhz_begin;
+    c.sm_mhz_end = sm_mhz_end;
 
     // Writing down results to CSV file
     writeResultsCSV(outf, kernel_times, H2D_times, D2H_times, energies, c);
