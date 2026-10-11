@@ -6,7 +6,7 @@ set -e
 timestamp=$(date +%Y%m%d_%H%M%S)
 
 # Profiler Variables List
-kernel_list=("FFT_Naive" "FFT_Stockham" "cuFFT")
+kernel_list=("FFT_Naive" "FFT_Naive_Tabled" "FFT_Stockham_Tabled" "cuFFT")
 nx_list=($((1<<10)) $((1<<14)) $((1<<18)) $((1<<22)) $((1<<24)))
 precision_list=("float" "double")
 
@@ -73,7 +73,6 @@ if [[ -n $EXPERIMENTS ]]; then
 
   # Summary
   python3 summary.py $RESULTS_DIR
-  python3 plots.py $RESULTS_DIR &
 fi
 
 
@@ -98,3 +97,7 @@ fi
 
 # echo "Cleaning files..."
 sshpass -p "$PASSWD" ssh -o ControlPath="$SSH_CTL" -p "$PORT" "${USER}@${HOST}" "cd $REMOTE_PATH && make cuda-clean"
+
+if [[ -n $EXPERIMENTS ]] && [[ -n $PROFILER ]]; then
+  python3 plots.py $RESULTS_DIR
+fi
