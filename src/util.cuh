@@ -10,11 +10,17 @@
 #define FP32_STRING     "float"
 #define FP64_STRING     "double"
 
+// Pi
+template <typename T>
+constexpr T PI = static_cast<T>(3.141592653589793238462643383279502884L);
+
 // Some FFT Kernels needs additional buffers, cuFFT needs a plan
 struct FFTContext {
     void* workspace = nullptr;
+    void* twiddles = nullptr;
     cufftHandle plan = 0;
     bool workspaceCreated = false;
+    bool tableCreated = false;
     bool planCreated = false;
 };
 
@@ -28,6 +34,7 @@ struct kernelEntry {
     kernelFunction<float, float2> float_fn;
     kernelFunction<double, double2> double_fn;
     bool needsWorkspace;
+    bool needsTable;
     bool needsPlan;
 };
 
@@ -78,6 +85,36 @@ __host__ __device__ inline auto cabs(T a) {
 
 // --- HARNESS HELPER FUNCTIONS --- //
 
+template <typename T2>
+bool createWorkspace(void** workspace, int N) {
+    size_t size = sizeof(T2) * N;
+    cudaError_t err = cudaMalloc(workspace, size);
+    return err == cudaSuccess;
+}
+ 
+template <typename T, typename T2>
+bool createTwiddlesTable(void** table, int N) {
+
+    // Calculates table in host
+    T2* h_tw = (T2*) malloc(sizeof(T2) * (N/2));
+    for (int k = 0; k < (N/2); k++) {
+        double arg = -2.0 * PI<T> * k / N;
+        double c = cos(arg);
+        double s = sin(arg);
+        h_tw[k] = make_vec2((T) c, (T) s); // Casts
+    }
+
+    // Transfering to GPU
+    size_t size = sizeof(T2) * (N/2);
+    cudaError_t err = cudaMalloc(table, size);
+    if (err == cudaSuccess) {
+        cudaMemcpy(*table, h_tw, size, cudaMemcpyHostToDevice);
+    }
+
+    free(h_tw);
+    return err == cudaSuccess;
+}
+
 template <typename T>
 bool createCufftPlan(cufftHandle* plan, int N) {
     constexpr bool is_float = std::is_same_v<T, float>;
@@ -94,12 +131,15 @@ bool createCufftPlan(cufftHandle* plan, int N) {
     return true;
 }
 
-template <typename T>
-FFTContext createFFTContext(size_t size, int N, bool needsWorkspace, bool needsPlan) {
+template <typename T, typename T2>
+FFTContext createFFTContext(int N, bool needsWorkspace, bool needsTable, bool needsPlan) {
     FFTContext ctx;
     if (needsWorkspace) {
-        cudaMalloc(&ctx.workspace, size);
-        ctx.workspaceCreated = true;
+        ctx.workspaceCreated = createWorkspace<T2>(&ctx.workspace, N);
+    }
+
+    if (needsTable) {
+        ctx.tableCreated = createTwiddlesTable<T, T2>(&ctx.twiddles, N);
     }
 
     if (needsPlan) {
@@ -111,7 +151,26 @@ FFTContext createFFTContext(size_t size, int N, bool needsWorkspace, bool needsP
 
 void destroyFFTContext(FFTContext& ctx) {
     if (ctx.workspaceCreated) cudaFree(ctx.workspace);
+    if (ctx.tableCreated) cudaFree(ctx.twiddles);
     if (ctx.planCreated) cufftDestroy(ctx.plan);
+}
+
+bool checkFFTContext(FFTContext& ctx, bool needsWorkspace, bool needsTable, bool needsPlan) {
+    bool ret = true;
+    if (needsWorkspace && ctx.workspaceCreated == false) {
+        ret = false;
+        fprintf(stderr, "FFTContext error: failed to create Workspace.\n");
+    }
+    if (needsTable && ctx.tableCreated == false) {
+        ret = false;
+        fprintf(stderr, "FFTContext error: failed to create Twiddles Table.\n");
+    }
+    if (needsPlan && ctx.planCreated == false) {
+        ret = false;
+        fprintf(stderr, "FFTContext error: failed to create cufftPlan1d.\n");
+    }
+
+    return ret;
 }
 
 // Function that resets vector
@@ -144,7 +203,7 @@ bool checkKernel(kernelFunction<T, T2> myKernel, int N, FFTContext& myKernelCtx)
     cudaMalloc(&d_myKernel_X, size);
 
     // Context for cuFFT
-    FFTContext cufftCtx = createFFTContext<T>(size, N, false, true);
+    FFTContext cufftCtx = createFFTContext<T, T2>(N, false, false, true);
 
     // Fill both data vectors with values
     setVector<T, T2>(h_cufft_X, N);

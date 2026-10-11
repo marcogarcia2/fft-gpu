@@ -7,12 +7,12 @@ import math
 
 from arcane import setup_plots
 
-PALETTE = { # OKABE_ITO
+PALETTE = { # OKABE_ITO PALETTE
     'FFT_Naive':                 '#0072B2',
     'FFT_Stockham':              '#E69F00',
-    'Placeholder 1':             '#F0E442',
-    'Placeholder 2':             '#D55E00',
-    'Placeholder 3':             '#CC79A7',
+    'FFT_Naive_Tabled':          '#F0E442',
+    'FFT_Stockham_Tabled':       '#CC79A7',
+    'Placeholder 3':             '#D55E00',
     'FFT_Naive_OutOfPlace':      '#56B4E9',
     'cuFFT':                     '#009E73',
 }
@@ -120,10 +120,8 @@ def plot_0(out_folder: Path, df: pd.DataFrame, roofline_json: dict, results_prof
     fig.savefig(out_path, bbox_inches='tight')
     plt.show()
 
-
-
-# Mean-time per vector size
-def plot_1(out_folder: Path, df: pd.DataFrame, FP32: bool=True, FP64: bool=True) -> None:
+# Mean-time (ms) X vector size
+def plot_1(out_folder: Path, df: pd.DataFrame, FP32: bool=True, FP64: bool=True):
 
     if (not FP32 and not FP64): return # both can't be false at the same time
 
@@ -186,10 +184,134 @@ def plot_1(out_folder: Path, df: pd.DataFrame, FP32: bool=True, FP64: bool=True)
     fig.savefig(out_path, bbox_inches='tight')
     plt.show()
 
+# GFLOPS X vector size
+def plot_1_gflops(out_folder: Path, df: pd.DataFrame, FP32: bool=True, FP64: bool=True):
+
+    if (not FP32 and not FP64): return # both can't be false at the same time
+
+    # Assembling the results dictionary with data
+    results = {}
+    for i in range(df.shape[0]):
+        kernel_name  = df['kernel_version'][i]
+        precision    = df['precision'][i]
+        N_val        = df['N'][i]
+        gflops       = df['gflops'][i]
+
+        # Filtering
+        if (precision == 'float'  and FP32 is False): continue
+        if (precision == 'double' and FP64 is False): continue
+
+        # Appending results
+        if kernel_name not in results: results[kernel_name] = {}
+        if precision not in results[kernel_name]: results[kernel_name][precision] = {}
+        results[kernel_name][precision][N_val] = (gflops)
+
+    # Plot
+    fig, ax = plt.subplots(figsize=(6, 3.5)) # final size in inches
+
+    # For each Kernel
+    for kernel, _ in results.items():
+        ## For each precision
+        for pr, data in _.items():
+            n = []
+            gflops = []
+            ### For each value of N there are t_mean +- t_ci95
+            for N_val, gfl in data.items():
+                n.append(N_val)
+                gflops.append(gfl)
+
+            prec_name = f" ({pr})" if FP32 and FP64 is True else ""
+            label = kernel + prec_name
+            ax.plot(n, gflops,
+                        color=PALETTE.get(kernel, DEFAULT_COLOR),
+                        **PRECISION_STYLE[pr],
+                        label=label)
+
+    # Style 
+    style_axes(ax)
+    ax.set_xscale('log', base=2)
+    pow2_ticks(ax, sorted(df['N'].unique()))
+    ax.set_yscale('log')
+    ax.set_ylabel('GFLOPS por execução')
+    ax.set_xlabel('Tamanho do vetor N')
+    ax.legend(frameon=False, loc='upper left')
+
+    # Saving
+    prec_name = ""
+    if (FP32 and not FP64): prec_name = "_FP32"
+    if (FP64 and not FP32): prec_name = "_FP64"
+    file_name = "plot_01_GFLOPS" + prec_name + ".pdf"
+    out_path = out_folder / file_name
+    fig.savefig(out_path, bbox_inches='tight')
+    plt.show()
+
+# 
 def plot_2():
     pass
-def plot_3():
-    pass
+
+# Performance per watt X N
+def plot_3(out_folder: Path, df: pd.DataFrame, FP32: bool=False, FP64: bool=False):
+    
+    if (not FP32 and not FP64): return
+    if (FP32 and FP64): return
+
+    # Assembling the results dictionary with data
+    results = {}
+    for i in range(df.shape[0]):
+        kernel_name   = df['kernel_version'][i]
+        precision     = df['precision'][i]
+        N_val         = df['N'][i]
+        perf_per_watt = df['perf_per_watt'][i]
+
+        # Filtering
+        if (precision == 'float'  and FP32 is False): continue
+        if (precision == 'double' and FP64 is False): continue
+
+        # Appending results
+        if kernel_name not in results: results[kernel_name] = {}
+        if precision not in results[kernel_name]: results[kernel_name][precision] = {}
+        results[kernel_name][precision][N_val] = (perf_per_watt)
+
+    # Plot
+    fig, ax = plt.subplots(figsize=(6, 3.5)) # final size in inches
+    
+    # For each Kernel
+    for kernel, _ in results.items():
+        ## For each precision
+        for pr, data in _.items():
+            n = []
+            ppw = []
+            ### For each value of N there are t_mean +- t_ci95
+            for N_val, p in data.items():
+                n.append(N_val)
+                ppw.append(p)
+
+        prec_name = f" ({pr})" if FP32 and FP64 is True else ""
+        label = kernel + prec_name
+        ax.plot(n, ppw,
+                    color=PALETTE.get(kernel, DEFAULT_COLOR),
+                    **PRECISION_STYLE[pr],
+                    label=label)
+    
+    # Style 
+    style_axes(ax)
+    ax.set_xscale('log', base=2)
+    pow2_ticks(ax, sorted(df['N'].unique()))
+    ax.set_yscale('log')
+    ax.set_ylabel('GFLOPS por Watt')
+    ax.set_xlabel('Tamanho do vetor N')
+    ax.legend(frameon=False, loc='upper left')
+
+    # Saving
+    prec_name = ""
+    if (FP32): prec_name = "_FP32"
+    if (FP64): prec_name = "_FP64"
+    file_name = "plot_03" + prec_name + ".pdf"
+    out_path = out_folder / file_name
+    fig.savefig(out_path, bbox_inches='tight')
+    plt.show()
+
+
 def plot_4():
     pass
 
@@ -203,10 +325,22 @@ def main():
     plot_0(output_folder, results_df, roofline_json, results_profile, FP32=True)
     plot_0(output_folder, results_df, roofline_json, results_profile, FP64=True)
 
-    # Plot 1: Kernel Performance
-    plot_1(output_folder, results_df)
+    # Plot 1: Kernel Performance (mean time per N)
+    # plot_1(output_folder, results_df)
     plot_1(output_folder, results_df, FP32=True, FP64=False)
     plot_1(output_folder, results_df, FP32=False, FP64=True)
+
+    # Plot 1.1: Kernel Performance (GFLOPS per N)
+    # plot_1_gflops(output_folder, results_df)
+    plot_1_gflops(output_folder, results_df, FP32=True, FP64=False)
+    plot_1_gflops(output_folder, results_df, FP32=False, FP64=True)
+
+    # Plot 2: Accumulated Speedup
+
+
+    # Plot 3:
+    plot_3(output_folder, results_df, FP32=True)
+    plot_3(output_folder, results_df, FP64=True)
 
 
 if __name__ == '__main__':

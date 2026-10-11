@@ -6,7 +6,7 @@
 
 // Runs a profile set
 template <typename T, typename T2>
-void runProfiler(kernelFunction<T, T2> kernel, int NX, bool needsWorkspace, bool needsPlan) {
+void runProfiler(kernelFunction<T, T2> kernel, int NX, bool needsWorkspace, bool needsTable, bool needsPlan) {
         
     // Allocating vectors
     size_t size = NX * sizeof(T2);
@@ -15,7 +15,8 @@ void runProfiler(kernelFunction<T, T2> kernel, int NX, bool needsWorkspace, bool
     cudaMalloc(&d_X, size);
 
     // FFT Context Creation
-    FFTContext ctx = createFFTContext<T>(size, NX, needsWorkspace, needsPlan);
+    FFTContext ctx = createFFTContext<T, T2>(NX, needsWorkspace, needsTable, needsPlan);
+    checkFFTContext(ctx, needsWorkspace, needsTable, needsPlan);
 
     // Fill vector with values
     setVector<T, T2>(h_X, NX);
@@ -54,8 +55,8 @@ int profiler(int argc, char *argv[], kernelEntry kernel_list[], int ksize) {
         }
         
         if (kernel) {
-            if (is_float) runProfiler<float, float2>(kernel->float_fn, NX, kernel->needsWorkspace, kernel->needsPlan);
-            else          runProfiler<double, double2>(kernel->double_fn, NX, kernel->needsWorkspace, kernel->needsPlan);
+            if (is_float) runProfiler<float, float2>(kernel->float_fn, NX, kernel->needsWorkspace, kernel->needsTable, kernel->needsPlan);
+            else          runProfiler<double, double2>(kernel->double_fn, NX, kernel->needsWorkspace, kernel->needsTable, kernel->needsPlan);
         }
         
         else {

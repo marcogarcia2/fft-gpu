@@ -9,7 +9,7 @@
 #define RPT     20
 
 template <typename T, typename T2>
-void runExperiment(std::ofstream& outf, kernelFunction<T, T2> kernel, std::string kname, int NX, int ACC, std::string precision, bool needsWorkspace, bool needsPlan) {
+void runExperiment(std::ofstream& outf, kernelFunction<T, T2> kernel, std::string kname, int NX, int ACC, std::string precision, bool needsWorkspace, bool needsTable, bool needsPlan) {
 
     // CUDA Events Setup
     cudaEvent_t setup_start, setup_stop, H2D_start, H2D_stop, D2H_start, D2H_stop, kernel_start, kernel_stop;
@@ -59,7 +59,8 @@ void runExperiment(std::ofstream& outf, kernelFunction<T, T2> kernel, std::strin
 
     // FFT Context creation
     cudaEventRecord(setup_start);
-    FFTContext ctx = createFFTContext<T>(size, NX, needsWorkspace, needsPlan);
+    FFTContext ctx = createFFTContext<T, T2>(NX, needsWorkspace, needsTable, needsPlan);
+    checkFFTContext(ctx, needsWorkspace, needsTable, needsPlan);
     cudaEventRecord(setup_stop);
     cudaEventSynchronize(setup_stop);
     cudaEventElapsedTime(&time_setup_ms, setup_start, setup_stop);
