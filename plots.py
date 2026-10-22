@@ -8,13 +8,13 @@ import math
 from arcane import setup_plots
 
 PALETTE = { # OKABE_ITO PALETTE
-    'FFT_Naive':                 '#0072B2',
-    'FFT_Stockham':              '#E69F00',
-    'FFT_Naive_Tabled':          '#F0E442',
-    'FFT_Stockham_Tabled':       '#CC79A7',
-    'Placeholder 3':             '#D55E00',
-    'FFT_Naive_OutOfPlace':      '#56B4E9',
-    'cuFFT':                     '#009E73',
+    'cuFFT':                   '#009E73',
+    'FFT_Naive':               '#0072B2',
+    'FFT_Tabled':        '#F0E442',
+    'FFT_Stockham':     '#D55E00',
+    'FFT_Shared':              '#E69F00',
+    'FFT_Shared_Pure':           '#CC79A7',
+    'FFT_Stockham_Pure':           '#56B4E9',
 }
 DEFAULT_COLOR = '#000000' # used for any kernel not listed above
 
@@ -96,7 +96,7 @@ def plot_0(out_folder: Path, df: pd.DataFrame, roofline_json: dict, results_prof
     # Plot Rooflines
     peak_bw = roofline_json['peak_bandwidth_gbps']
     peak_gflops = roofline_json['peak_gflops_fp32'] if FP32 else roofline_json['peak_gflops_fp64']
-    x = np.logspace(-1, 7, 200)                       # 0.1 a 100 FLOP/byte
+    x = np.logspace(-1, 4, 200)                       # 0.1 a 100 FLOP/byte
     roof = np.minimum(peak_bw * x, peak_gflops)
     ax.plot(x, roof, color='black', linewidth=1.5)
 

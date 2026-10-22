@@ -69,11 +69,24 @@ def get_profile_metrics(results_folder: Path) -> dict:
     csv_files.sort()
     csv_files.pop() # removes "Results.csv"
 
+    unit_to_bytes = {'byte': 1, 'Kbyte': 1e3, 'Mbyte': 1e6, 'Gbyte': 1e9}
+
     for f in csv_files:
         kname, Nval, precision = parse_NCU_file_name(f)
+
+        # NCU auto-scales the unit per metric (byte/Kbyte/Mbyte/Gbyte) based on
+        # magnitude, so it can differ between files and even between the read
+        # and write columns of the same file. Read the units row (row 1) to
+        # find the actual scale instead of assuming one fixed unit.
+        units_row = pd.read_csv(f, nrows=2).iloc[0]
+        read_unit = units_row['dram__bytes_read.sum']
+        write_unit = units_row['dram__bytes_write.sum']
+        if read_unit not in unit_to_bytes or write_unit not in unit_to_bytes:
+            raise ValueError(f"Unexpected byte unit in {f}: read={read_unit!r}, write={write_unit!r}")
+
         df = pd.read_csv(f, skiprows=[1], thousands=',')
-        bytes_read  = df['dram__bytes_read.sum'].sum()
-        bytes_write = df['dram__bytes_write.sum'].sum()
+        bytes_read  = df['dram__bytes_read.sum'].sum()  * unit_to_bytes[read_unit]
+        bytes_write = df['dram__bytes_write.sum'].sum() * unit_to_bytes[write_unit]
         if kname not in results: results[kname] = {}
         if precision not in results[kname]: results[kname][precision] = {}
         results[kname][precision][Nval] = (bytes_read, bytes_write)
