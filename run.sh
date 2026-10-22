@@ -6,9 +6,10 @@ set -e
 timestamp=$(date +%Y%m%d_%H%M%S)
 
 # Profiler Variables List
-kernel_list=("FFT_Naive" "FFT_Naive_Tabled" "FFT_Stockham_Tabled" "cuFFT")
-nx_list=($((1<<10)) $((1<<14)) $((1<<18)) $((1<<22)) $((1<<24)))
-precision_list=("float" "double")
+kernel_list=( "FFT_Naive" "FFT_Tabled" "FFT_Stockham_Pure" "FFT_Stockham" "FFT_Shared" "FFT_Shared_Pure" "cuFFT" )
+# kernel_list=( "FFT_Shared" "FFT_Stockham_Tabled" "cuFFT" )
+nx_list=( $((1<<24)) )
+precision_list=( "float" "double" )
 
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 RESULTS_DIR="results/$timestamp"

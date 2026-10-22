@@ -12,12 +12,17 @@ int main(int argc, char *argv[]) {
     
     // Kernels:                                                                 BOOLEAN VALUES LIST: (needsWorkspace, needsTable, needsPlan)
     static kernelEntry kernel_list [] {
-        { "FFT_Naive",           FFT_Naive<float, float2>,           FFT_Naive<double, double2>,           false, false, false },
-        { "FFT_Naive_Tabled",    FFT_Naive_Tabled<float, float2>,    FFT_Naive_Tabled<double, double2>,    false, true,  false },
-        { "FFT_Stockham_Tabled", FFT_Stockham_Tabled<float, float2>, FFT_Stockham_Tabled<double, double2>, true,  true,  false },
-        { "cuFFT",               cuFFT<float, float2>,               cuFFT<double, double2>,               false, false, true  },
+        { "FFT_Naive",           FFT_Naive<float, float2>,           FFT_Naive<double, double2>,         false, false, false },
+        { "FFT_Tabled",          FFT_Tabled<float, float2>,          FFT_Tabled<double, double2>,        false, true,  false },
+        { "FFT_Stockham_Pure",   FFT_Stockham_Pure<float, float2>,   FFT_Stockham_Pure<double, double2>, true,  false, false },
+        { "FFT_Stockham",        FFT_Stockham<float, float2>,        FFT_Stockham<double, double2>,      true,  true,  false },
+        { "FFT_Shared",          FFT_Shared<float, float2>,          FFT_Shared<double, double2>,        false, true,  false },
+        { "FFT_Shared_Pure",     FFT_Shared_Pure<float, float2>,     FFT_Shared_Pure<double, double2>,   false, false, false },
+        { "cuFFT",               cuFFT<float, float2>,               cuFFT<double, double2>,             false, false, true  },
     };
     const int KN_L_SIZE = sizeof(kernel_list)/sizeof(kernel_list[0]);
+
+
 
     // --- PROFILE MODE (NCU) --- //
     if (argc == 4) {
