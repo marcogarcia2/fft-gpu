@@ -43,25 +43,28 @@ int main(int argc, char *argv[]) {
     const int NX_L_SIZE = sizeof(NX_list)/sizeof(NX_list[0]);
     
     // ACC (different values for float and double)
-    int ACC_float_list[] = { 20000, 10000, 2000, 100, 30 };
-    int ACC_double_list[] = { 10000, 5000, 600, 30, 10 };
-    // int ACC_float_list[] = { 500, 300, 100, 10, 3 }; // testing purposes
-    // int ACC_double_list[] = { 100, 75, 50, 2, 1 };
-    
+    // int ACC_float_list[] = { 20000, 10000, 2000, 100, 30 };
+    // int ACC_double_list[] = { 10000, 5000, 600, 30, 10 };
+    int ACC_float_list[] = { 500, 300, 100, 10, 3 }; // lower values for testing purposes
+    int ACC_double_list[] = { 100, 75, 50, 2, 1 };
+
     // NX Loop
     for (int n_idx = 0; n_idx < NX_L_SIZE; n_idx++) {
         int NX = NX_list[n_idx];
         int ACC_f = ACC_float_list[n_idx];
         int ACC_d = ACC_double_list[n_idx];
 
+        float ctrl_time_f = runControl<float, float2>(NX, ACC_f, FP32_STRING);
+        float ctrl_time_d = runControl<double, double2>(NX, ACC_d, FP64_STRING);
+
         // KERNEL Loop 
         for (int k_idx = 0; k_idx < KN_L_SIZE; k_idx++) {
             kernelEntry kernel = kernel_list[k_idx];
 
             // Run experiments
-            runExperiment<float, float2>(outf, kernel.float_fn, kernel.name, NX, ACC_f, FP32_STRING,
+            runExperiment<float, float2>(outf, kernel.float_fn, kernel.name, NX, ACC_f, ctrl_time_f, FP32_STRING,
                                          kernel.needsWorkspace, kernel.needsTable, kernel.needsPlan);
-            runExperiment<double, double2>(outf, kernel.double_fn, kernel.name, NX, ACC_d, FP64_STRING,
+            runExperiment<double, double2>(outf, kernel.double_fn, kernel.name, NX, ACC_d, ctrl_time_d, FP64_STRING,
                                            kernel.needsWorkspace, kernel.needsTable, kernel.needsPlan);
         }
     }

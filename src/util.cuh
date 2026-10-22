@@ -47,6 +47,7 @@ struct constants {
     int acc;
     float thresh;
     float time_setup_ms;
+    float ctrl_time;
     unsigned int temp_begin;
     unsigned int temp_end;
     unsigned int sm_mhz_begin;
@@ -173,7 +174,7 @@ bool checkFFTContext(FFTContext& ctx, bool needsWorkspace, bool needsTable, bool
     return ret;
 }
 
-// Function that resets vector
+// Function that sets/resets data vector
 template <typename T, typename T2>
 void setVector(T2* X, int N) {
     std::mt19937 rng(42);
@@ -240,6 +241,14 @@ bool checkKernel(kernelFunction<T, T2> myKernel, int N, FFTContext& myKernelCtx)
     cudaFree(d_myKernel_X);
 
     return ret;
+}
+
+// Max consecutive unnormalized FFTs berfore values can overflow T's range
+template <typename T>
+int safeResetInterval(int N) {
+    double maxVal = std::is_same_v<T, float> ? 3.4e38 : 1.8e308;
+    int k = (int)(2.0 * std::log(maxVal / 1e6) / std::log((double)N));
+    return k < 1 ? 1 : k;
 }
 
 // --- STATISTICS FUNCTIONS --- //
@@ -317,7 +326,7 @@ std::ofstream createCSV() {
     std::ofstream outf { "Results.csv" };
     outf << "kernel_version,N,precision,RPT,ACC,threshold,";                        // harness
     outf << "time_setup_ms,time_mean_ms,time_median_ms,time_std,time_ci95,";        // kernel
-    outf << "time_h2d_ms,time_d2h_ms,";                                             // transfers
+    outf << "ctrl_time_ms,time_h2d_ms,time_d2h_ms,";                                             // transfers
     outf << "energy_mean_mj,energy_median_mj,energy_std,energy_ci95,";              // energy
     outf << "temp_begin,temp_end,sm_mhz_begin,sm_mhz_end,gflops,perf_per_watt,edp"; // other
     outf << std::endl;       
@@ -339,7 +348,7 @@ void writeResultsCSV(std::ofstream& outf, float* kernel_times, float* H2D_times,
     //* Data transfer statistics (in milliseconds)
     double H2D_mean = mean(H2D_times, c.rpt);
     double D2H_mean = mean(D2H_times, c.rpt);
-    outf << H2D_mean << "," << D2H_mean << ",";
+    outf << c.ctrl_time << "," << H2D_mean << "," << D2H_mean << ",";
 
     //* Energy statistics (in millijoules)
     double energy_mean = mean(energies, c.rpt);
