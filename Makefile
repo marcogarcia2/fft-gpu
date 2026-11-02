@@ -15,7 +15,8 @@ REP = $(TIMESTAMP)_$(KERNEL)_$(NVALUE)_$(PRECISION)
 GID = $(shell id -g)
 
 NCU_FLAGS = --section SpeedOfLight --section MemoryWorkloadAnalysis_Tables \
-    		--section Occupancy --section LaunchStats --section WarpStateStats
+    		--section Occupancy --section LaunchStats --section WarpStateStats \
+			--metrics lts__t_sector_hit_rate.pct,smsp__inst_executed.sum,lts__t_sector_hit_rate.pct
 
 
 # LOCAL TARGETS:
