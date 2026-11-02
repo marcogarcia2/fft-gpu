@@ -6,8 +6,7 @@ set -e
 timestamp=$(date +%Y%m%d_%H%M%S)
 
 # Profiler Variables List
-kernel_list=( "FFT_Naive" "FFT_Tabled" "FFT_Stockham_Pure" "FFT_Stockham" "FFT_Shared" "FFT_Shared_Pure" "cuFFT" )
-# kernel_list=( "FFT_Shared" "FFT_Stockham_Tabled" "cuFFT" )
+kernel_list=( "FFT_Naive" "FFT_Naive_Tabled" "FFT_Stockham" "FFT_Stockham_Tabled" "FFT_Shared" "FFT_Shared_Tabled" "FFT_BCF" "FFT_BCF_Tabled" "FFT_Radix4" "FFT_Radix4_Tabled" "cuFFT" )
 nx_list=( $((1<<24)) )
 precision_list=( "float" "double" )
 
