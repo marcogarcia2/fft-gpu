@@ -23,7 +23,7 @@ __host__ double bandwidthBenchmark() {
     cudaMalloc(&d_out, bytes);
     cudaMemset(d_in, 1, bytes);
 
-    int threads = 256, blocks = 256;
+    int threads = 256, blocks = 7168;
 
     // Warmup
     copyKernel<<<blocks, threads>>>(d_in, d_out, n);
