@@ -70,9 +70,6 @@ if [[ -n $EXPERIMENTS ]]; then
   echo "Copying results back to local..."
   mkdir -p $RESULTS_DIR
   sshpass -p "$PASSWD" scp -o ControlPath="$SSH_CTL" -P "$PORT" "${USER}@${HOST}:${REMOTE_PATH}/Results.csv" "$RESULTS_DIR/Results.csv"
-
-  # Summary
-  python3 summary.py $RESULTS_DIR
 fi
 
 
@@ -100,4 +97,8 @@ sshpass -p "$PASSWD" ssh -o ControlPath="$SSH_CTL" -p "$PORT" "${USER}@${HOST}" 
 
 if [[ -n $EXPERIMENTS ]] && [[ -n $PROFILER ]]; then
   python3 plots.py $RESULTS_DIR
+fi
+
+if [[ -n $EXPERIMENTS ]]; then
+  python3 summary.py $RESULTS_DIR
 fi
