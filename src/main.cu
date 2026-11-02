@@ -43,32 +43,67 @@ int main(int argc, char *argv[]) {
     std::ofstream outf { createCSV() }; // CSV file that stores results
     
     // NX
-    int NX_list[] = { 1<<10, 1<<14, 1<<18, 1<<22, 1<<24 };
+    int NX_list[] = { 1<<10, 1<<12, 1<<14, 1<<16, 1<<18, 1<<20, 1<<22, 1<<24 };
     const int NX_L_SIZE = sizeof(NX_list)/sizeof(NX_list[0]);
     
-    // ACC (different values for float and double)
-    // int ACC_float_list[] = { 20000, 10000, 2000, 100, 30 };
-    // int ACC_double_list[] = { 10000, 5000, 600, 30, 10 };
-    int ACC_float_list[] = { 500, 300, 100, 10, 3 }; // lower values for testing purposes
-    int ACC_double_list[] = { 100, 75, 50, 2, 1 };
+    // ACC (handpicked per kernel, precision and N for a ~1 s energy window)
+    //                       FP32 { N = 2^10 ... 2^24 }
+    //                       FP64 { N = 2^10 ... 2^24 }
+    static accEntry ACC_list [] {
+        { "FFT_Naive",           {  44000,  37000,  31000, 20000,  6800,  740,  170,  39 },
+                                 {  16000,  13000,   6800,  2600,   610,  140,   33,   8 } },
+        { "FFT_Naive_Tabled",    {  45000,  37000,  31000, 20000,  4600,  640,  130,  27 },
+                                 {  37000,  31000,  20000, 11000,  1600,  360,   77,  17 } },
+        { "FFT_Stockham",        {  48000,  40000,  33000, 23000,  4200,  940,  220,  52 },
+                                 {  17000,  14000,   7100,  2600,   670,  160,   37,   8 } },
+        { "FFT_Stockham_Tabled", {  49000,  41000,  34000, 25000,  4100,  910,  210,  50 },
+                                 {  41000,  34000,  23000, 11000,  1900,  450,  100,  24 } },
+        { "FFT_Shared",          { 150000, 140000, 110000, 54000, 15000, 3400,  830, 200 },
+                                 {  46000,  30000,  11000,  2800,   660,  160,   36,   8 } },
+        { "FFT_Shared_Tabled",   { 190000, 170000, 140000, 77000, 14000, 3500,  810, 170 },
+                                 { 130000,  93000,  50000, 15000,  3700,  870,  210,  48 } },
+        { "FFT_BCF",             { 150000, 140000, 100000, 49000, 14000, 3100,  760, 190 },
+                                 {  46000,  30000,  11000,  2800,   660,  160,   36,   8 } },
+        { "FFT_BCF_Tabled",      { 190000, 170000, 140000, 72000, 14000, 3400,  800, 170 },
+                                 { 130000,  93000,  51000, 15000,  3700,  870,  210,  48 } },
+        { "FFT_Radix4",          { 160000, 150000, 120000, 72000, 18000, 4000,  970, 230 },
+                                 {  44000,  35000,  14000,  4200,   910,  220,   51,  12 } },
+        { "FFT_Radix4_Tabled",   { 180000, 180000, 150000, 87000, 19000, 3500,  820, 170 },
+                                 { 120000,  98000,  51000, 16000,  3900,  920,  220,  51 } },
+        { "cuFFT",               { 130000, 100000,  85000, 73000, 30000, 6800, 1800, 370 },
+                                 {  38000,  14000,  17000,  9100,  2900,  700,  190,  49 } },
+    };
+    const int ACC_L_SIZE = sizeof(ACC_list)/sizeof(ACC_list[0]);
+    static_assert(NX_L_SIZE == NX_COUNT, "ACC_list rows need one value per N in NX_list");
+
+    // Every kernel must have an ACC row: fail now, not in the middle of the run
+    for (int k_idx = 0; k_idx < KN_L_SIZE; k_idx++) {
+        if (!selectAccByName(ACC_list, ACC_L_SIZE, kernel_list[k_idx].name)) {
+            fprintf(stderr, "No ACC entry for kernel %s\n", kernel_list[k_idx].name);
+            return 1;
+        }
+    }
 
     // NX Loop
     for (int n_idx = 0; n_idx < NX_L_SIZE; n_idx++) {
         int NX = NX_list[n_idx];
-        int ACC_f = ACC_float_list[n_idx];
-        int ACC_d = ACC_double_list[n_idx];
-
-        float ctrl_time_f = runControl<float, float2>(NX, ACC_f, FP32_STRING);
-        float ctrl_time_d = runControl<double, double2>(NX, ACC_d, FP64_STRING);
-
+        
+        const int ACC_CTRL = 1000;
+        controlResult ctrl_f = runControl<float, float2>(NX, ACC_CTRL, FP32_STRING);
+        controlResult ctrl_d = runControl<double, double2>(NX, ACC_CTRL, FP64_STRING);
+        
         // KERNEL Loop 
         for (int k_idx = 0; k_idx < KN_L_SIZE; k_idx++) {
             kernelEntry kernel = kernel_list[k_idx];
+            
+            accEntry* acc = selectAccByName(ACC_list, ACC_L_SIZE, kernel.name);
+            int ACC_f = acc->float_acc[n_idx];
+            int ACC_d = acc->double_acc[n_idx];
 
             // Run experiments
-            runExperiment<float, float2>(outf, kernel.float_fn, kernel.name, NX, ACC_f, ctrl_time_f, FP32_STRING,
+            runExperiment<float, float2>(outf, kernel.float_fn, kernel.name, NX, ACC_f, ctrl_f, FP32_STRING,
                                          kernel.needsWorkspace, kernel.needsTable, kernel.needsPlan);
-            runExperiment<double, double2>(outf, kernel.double_fn, kernel.name, NX, ACC_d, ctrl_time_d, FP64_STRING,
+            runExperiment<double, double2>(outf, kernel.double_fn, kernel.name, NX, ACC_d, ctrl_d, FP64_STRING,
                                            kernel.needsWorkspace, kernel.needsTable, kernel.needsPlan);
         }
     }

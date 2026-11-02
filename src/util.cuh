@@ -39,6 +39,20 @@ struct kernelEntry {
     bool needsPlan;
 };
 
+// ACC struct: accumulations per N (same order as NX_list in main.cu), for each precision
+#define NX_COUNT 8
+struct accEntry {
+    const char* name;           // must match the kernelEntry name
+    int float_acc[NX_COUNT];
+    int double_acc[NX_COUNT];
+};
+
+// Control results: cost of one D2D reset copy, subtracted from the kernel measurements
+struct controlResult {
+    float time_ms;
+    float energy_mj;
+};
+
 // Struct used to store some constants used in results
 struct constants {
     std::string kname;
@@ -49,6 +63,18 @@ struct constants {
     float thresh;
     float time_setup_ms;
     float ctrl_time;
+    float ctrl_energy;
+    float window_ms;      // mean length of the energy measurement window (ms)
+    double kernel_mean;   // kernel time statistics (ms)
+    double kernel_median;
+    double kernel_std;
+    double kernel_ic95;
+    double H2D_mean;      // data transfer means (ms)
+    double D2H_mean;
+    double energy_mean;   // energy statistics (mJ)
+    double energy_median;
+    double energy_std;
+    double energy_ic95;
     unsigned int temp_begin;
     unsigned int temp_end;
     unsigned int sm_mhz_begin;
@@ -314,7 +340,7 @@ double stddev(float* vector, int N) {
 }
 
 double ic95(float* vector, int N) {
-    double t = 1.96;
+    double t = 2.045;
     double SEM = stddev(vector, N) / std::sqrt((double)N);
     return t * SEM;
 }
@@ -327,7 +353,7 @@ std::ofstream createCSV() {
     std::ofstream outf { "Results.csv" };
     outf << "kernel_version,N,precision,RPT,ACC,threshold,";                        // harness
     outf << "time_setup_ms,time_mean_ms,time_median_ms,time_std,time_ci95,";        // kernel
-    outf << "ctrl_time_ms,time_h2d_ms,time_d2h_ms,";                                             // transfers
+    outf << "ctrl_time_ms,ctrl_energy_mj,time_h2d_ms,time_d2h_ms,window_ms,";       // transfers
     outf << "energy_mean_mj,energy_median_mj,energy_std,energy_ci95,";              // energy
     outf << "temp_begin,temp_end,sm_mhz_begin,sm_mhz_end,gflops,perf_per_watt,edp"; // other
     outf << std::endl;       
@@ -335,28 +361,18 @@ std::ofstream createCSV() {
 }
 
 // Function that writes one line of results 
-void writeResultsCSV(std::ofstream& outf, float* kernel_times, float* H2D_times, float* D2H_times, float* energies, const constants& c) {
+void writeResultsCSV(std::ofstream& outf, const constants& c) {
     //* Harness parameters
     outf << c.kname << "," << c.nx << "," << c.precision << "," << c.rpt << "," << c.acc << "," << c.thresh << ",";
     
     //* Kernel statistics (in milliseconds)
-    double kernel_mean = mean(kernel_times, c.rpt);  
-    double kernel_median = median(kernel_times, c.rpt);
-    double kernel_std = stddev(kernel_times, c.rpt);
-    double kernel_ic95 = ic95(kernel_times, c.rpt);
-    outf << c.time_setup_ms << "," << kernel_mean << "," << kernel_median << "," << kernel_std << "," << kernel_ic95 << ",";
+    outf << c.time_setup_ms << "," << c.kernel_mean << "," << c.kernel_median << "," << c.kernel_std << "," << c.kernel_ic95 << ",";
 
     //* Data transfer statistics (in milliseconds)
-    double H2D_mean = mean(H2D_times, c.rpt);
-    double D2H_mean = mean(D2H_times, c.rpt);
-    outf << c.ctrl_time << "," << H2D_mean << "," << D2H_mean << ",";
+    outf << c.ctrl_time << "," << c.ctrl_energy << "," << c.H2D_mean << "," << c.D2H_mean << "," << c.window_ms << ",";
 
     //* Energy statistics (in millijoules)
-    double energy_mean = mean(energies, c.rpt);
-    double energy_median = median(energies, c.rpt);
-    double energy_std = stddev(energies, c.rpt);
-    double energy_ic95 = ic95(energies, c.rpt);
-    outf << energy_mean << "," << energy_median << "," << energy_std << "," << energy_ic95 << ",";
+    outf << c.energy_mean << "," << c.energy_median << "," << c.energy_std << "," << c.energy_ic95 << ",";
 
     //* Other data
     
@@ -368,11 +384,11 @@ void writeResultsCSV(std::ofstream& outf, float* kernel_times, float* H2D_times,
 
     // GFLOPS (giga float-operations per second)
     double flops = 5.0 * c.nx * log2(c.nx);
-    double kernel_time_in_seconds = kernel_mean / 1000.0;
+    double kernel_time_in_seconds = c.kernel_mean / 1000.0;
     double gflops = flops / kernel_time_in_seconds / 1e9; // 1e9 = giga
 
     // Performance per watt (GFLOPS/W)
-    double energy_in_joules = energy_mean / 1000.0;
+    double energy_in_joules = c.energy_mean / 1000.0;
     double watts = energy_in_joules / kernel_time_in_seconds;
     double perf_per_watt = gflops / watts;
     
@@ -387,6 +403,15 @@ kernelEntry* selectKernelByName(kernelEntry kernel_list[], int size, std::string
     for (int i = 0; i < size; i++) {
         if (input == kernel_list[i].name)
             return &kernel_list[i];
+    }
+    return nullptr;
+}
+
+// 
+accEntry* selectAccByName(accEntry acc_list[], int size, std::string input) {
+    for (int i = 0; i < size; i++) {
+        if (input == acc_list[i].name)
+            return &acc_list[i];
     }
     return nullptr;
 }

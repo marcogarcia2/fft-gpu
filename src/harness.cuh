@@ -2,15 +2,18 @@
 #define HARNESS_CUH
 
 #include <type_traits>
+#include <algorithm>
+#include <cmath>
 #include <nvml.h>
 
 #include "util.cuh"
 
 #define RPT     30
+#define CTRL_WINDOW_MS 1000.0f   // length of the control energy window (ms)
 
 // Function that performs kernel measurements
 template <typename T, typename T2>
-void runExperiment(std::ofstream& outf, kernelFunction<T, T2> kernel, std::string kname, int NX, int ACC, float ctrl_time, std::string precision, bool needsWorkspace, bool needsTable, bool needsPlan) {
+void runExperiment(std::ofstream& outf, kernelFunction<T, T2> kernel, std::string kname, int NX, int ACC, controlResult ctrl, std::string precision, bool needsWorkspace, bool needsTable, bool needsPlan) {
 
     // CUDA Events Setup
     cudaEvent_t setup_start, setup_stop, H2D_start, H2D_stop, D2H_start, D2H_stop, kernel_start, kernel_stop;
@@ -44,6 +47,7 @@ void runExperiment(std::ofstream& outf, kernelFunction<T, T2> kernel, std::strin
     float* H2D_times    = (float*)malloc(sizeof(float) * RPT);
     float* D2H_times    = (float*)malloc(sizeof(float) * RPT);
     float* energies     = (float*)malloc(sizeof(float) * RPT);
+    float* window_times = (float*)malloc(sizeof(float) * RPT);   // raw energy window (ms), resets included
 
     // Allocating vectors
     size_t size = NX * sizeof(T2);
@@ -74,7 +78,7 @@ void runExperiment(std::ofstream& outf, kernelFunction<T, T2> kernel, std::strin
         fprintf(stderr, "Error: MyKernel is not correct (NX = %d).\n", NX);
         // return 1;
     }
-    else printf("Kernel is correct.\n");
+    // else printf("Kernel is correct.\n");
 
     // Temperature and Clock before experiment
     nvmlDeviceGetTemperature(device, NVML_TEMPERATURE_GPU, &temp_begin);
@@ -108,6 +112,7 @@ void runExperiment(std::ofstream& outf, kernelFunction<T, T2> kernel, std::strin
         cudaEventSynchronize(kernel_stop);
         nvmlDeviceGetTotalEnergyConsumption(device, &energy_stop);
         cudaEventElapsedTime(&kernel_ms, kernel_start, kernel_stop);
+        window_times[rep] = kernel_ms;   // same interval as the NVML energy reading
         
         // D2H transfer
         cudaEventRecord(D2H_start);
@@ -117,8 +122,8 @@ void runExperiment(std::ofstream& outf, kernelFunction<T, T2> kernel, std::strin
         cudaEventElapsedTime(&D2H_ms, D2H_start, D2H_stop);
 
         // Results calculations
-        kernel_ms = (float)(kernel_ms / ACC) - ctrl_time * (ACC / SRI) / ACC;
-        kernel_energy_mj = (float)(energy_stop - energy_start) / ACC;
+        kernel_ms = (float)(kernel_ms / ACC) - ctrl.time_ms * (ACC / SRI) / ACC;
+        kernel_energy_mj = (float)((energy_stop - energy_start) - ctrl.energy_mj * (ACC / SRI)) / ACC;
 
         // Saves results
         kernel_times[rep] = kernel_ms;
@@ -126,6 +131,7 @@ void runExperiment(std::ofstream& outf, kernelFunction<T, T2> kernel, std::strin
         D2H_times[rep] = D2H_ms;
         energies[rep] = kernel_energy_mj;
     }
+    
 
     // Temperature and Clock after experiment
     nvmlDeviceGetTemperature(device, NVML_TEMPERATURE_GPU, &temp_end);
@@ -144,10 +150,24 @@ void runExperiment(std::ofstream& outf, kernelFunction<T, T2> kernel, std::strin
     c.temp_end = temp_end;
     c.sm_mhz_begin = sm_mhz_begin;
     c.sm_mhz_end = sm_mhz_end;
-    c.ctrl_time = ctrl_time;
+    c.ctrl_time = ctrl.time_ms;
+    c.ctrl_energy = ctrl.energy_mj;
+    c.window_ms = mean(window_times, RPT);
+
+    // Statistics of the RPT repetitions
+    c.kernel_mean   = mean(kernel_times, RPT);
+    c.kernel_median = median(kernel_times, RPT);
+    c.kernel_std    = stddev(kernel_times, RPT);
+    c.kernel_ic95   = ic95(kernel_times, RPT);
+    c.H2D_mean      = mean(H2D_times, RPT);
+    c.D2H_mean      = mean(D2H_times, RPT);
+    c.energy_mean   = mean(energies, RPT);
+    c.energy_median = median(energies, RPT);
+    c.energy_std    = stddev(energies, RPT);
+    c.energy_ic95   = ic95(energies, RPT);
 
     // Writing down results to CSV file
-    writeResultsCSV(outf, kernel_times, H2D_times, D2H_times, energies, c);
+    writeResultsCSV(outf, c);
     printf("Results saved.\n");
 
     // Destroy FFTContext memory
@@ -164,6 +184,7 @@ void runExperiment(std::ofstream& outf, kernelFunction<T, T2> kernel, std::strin
     free(D2H_times);
     free(H2D_times);
     free(energies);
+    free(window_times);
 
     // NVML free
     nvmlShutdown();
@@ -179,16 +200,25 @@ void runExperiment(std::ofstream& outf, kernelFunction<T, T2> kernel, std::strin
     cudaEventDestroy(kernel_stop);
 }
 
-// Function that calculates D2D time to subtract later
+// Function that calculates the D2D reset copy cost (time and energy) to subtract later.
+// First ACC_ctrl copies give the time of one copy; then enough copies to fill CTRL_WINDOW_MS
+// are timed and metered, so the NVML energy counter (~100 ms updates) gets a long window.
 template <typename T, typename T2>
-float runControl(int NX, int ACC_ctrl, std::string precision) {
+controlResult runControl(int NX, int ACC_ctrl, std::string precision) {
     // CUDA Events Setup
     cudaEvent_t ctrl_event_start, ctrl_event_stop;    
     cudaEventCreate(&ctrl_event_stop);
     cudaEventCreate(&ctrl_event_start);
+
+    // NVML Setup
+    nvmlInit();
+    nvmlDevice_t device;
+    nvmlDeviceGetHandleByIndex(0, &device);
     
-    // Time Variables
-    float total_time, control_time;
+    // Time and Energy Variables
+    float total_time;
+    unsigned long long energy_start, energy_stop;
+    controlResult ctrl {};
 
     // Allocating vectors
     size_t size = NX * sizeof(T2);
@@ -201,12 +231,7 @@ float runControl(int NX, int ACC_ctrl, std::string precision) {
     setVector<T, T2>(h_X, NX);
     cudaMemcpy(d_Pristine, h_X, size, cudaMemcpyHostToDevice);
 
-    std::cout << "Starting Control Experiment: ";
-    std::cout << "("<< "NX=" << NX << ", ";
-    std::cout << precision << ", ";
-    std::cout << "ACC_ctrl=" << ACC_ctrl << ")" << std::endl; 
-
-    // Control Data Flow
+    // Calibration: time of one copy, to size the energy window
     cudaEventRecord(ctrl_event_start);
     for (int k = 0; k < ACC_ctrl; k++) {
         cudaMemcpy(d_X, d_Pristine, size, cudaMemcpyDeviceToDevice);
@@ -214,22 +239,42 @@ float runControl(int NX, int ACC_ctrl, std::string precision) {
     cudaEventRecord(ctrl_event_stop);
     cudaEventSynchronize(ctrl_event_stop);
     cudaEventElapsedTime(&total_time, ctrl_event_start, ctrl_event_stop);
+    int ACC_energy = std::max(ACC_ctrl, (int)std::ceil(CTRL_WINDOW_MS / (total_time / ACC_ctrl)));
 
-    // Calculating results per execution
-    control_time = (float)total_time / ACC_ctrl;
+    std::cout << "Starting Control Experiment: ";
+    std::cout << "("<< "NX=" << NX << ", ";
+    std::cout << precision << ", ";
+    std::cout << "ACC_ctrl=" << ACC_energy << ")" << std::endl; 
+
+    // Control Data Flow: Time and Energy
+    nvmlDeviceGetTotalEnergyConsumption(device, &energy_start);
+    cudaEventRecord(ctrl_event_start);
+    for (int k = 0; k < ACC_energy; k++) {
+        cudaMemcpy(d_X, d_Pristine, size, cudaMemcpyDeviceToDevice);
+    }
+    cudaEventRecord(ctrl_event_stop);
+    cudaEventSynchronize(ctrl_event_stop);
+    nvmlDeviceGetTotalEnergyConsumption(device, &energy_stop);
+    cudaEventElapsedTime(&total_time, ctrl_event_start, ctrl_event_stop);
+
+    // Calculating results per copy
+    ctrl.time_ms = (float)total_time / ACC_energy;
+    ctrl.energy_mj = (float)(energy_stop - energy_start) / ACC_energy;
     
     std::cout << "Control Time Elapsed = " << total_time << " ms" << std::endl;
-    std::cout << "D2D Time = " << control_time << " ms" << std::endl;
+    std::cout << "D2D Time = " << ctrl.time_ms << " ms, D2D Energy = " << ctrl.energy_mj << " mJ" << std::endl;
 
     // Freeing memory
     cudaFree(d_X);
     cudaFree(d_Pristine);
     free(h_X);
 
+    nvmlShutdown();
+
     cudaEventDestroy(ctrl_event_start);
     cudaEventDestroy(ctrl_event_stop);
 
-    return control_time;
+    return ctrl;
 }
 
 #endif
