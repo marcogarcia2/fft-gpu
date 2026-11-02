@@ -3,6 +3,7 @@
 
 #include <random>
 #include <fstream>
+#include <limits>
 
 #include "kernels.cuh"
 
@@ -246,7 +247,7 @@ bool checkKernel(kernelFunction<T, T2> myKernel, int N, FFTContext& myKernelCtx)
 // Max consecutive unnormalized FFTs berfore values can overflow T's range
 template <typename T>
 int safeResetInterval(int N) {
-    double maxVal = std::is_same_v<T, float> ? 3.4e38 : 1.8e308;
+    double maxVal = std::numeric_limits<T>::max();   // 1.8e308 overflowed to inf, making the double SRI 1
     int k = (int)(2.0 * std::log(maxVal / 1e6) / std::log((double)N));
     return k < 1 ? 1 : k;
 }
