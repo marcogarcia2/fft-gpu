@@ -41,6 +41,28 @@ KERNEL_MARKER = {'cuFFT': 'o', 'Naive': '^', 'Stockham': 's', 'Shared': 'D', 'BC
 def kernel_marker(kernel: str) -> dict:
     return dict(marker=KERNEL_MARKER.get(display_name(kernel), 'o'), markerfacecolor='none')
 
+# Sideways nudge (in octaves) between neighboring kernels in the plots over N, so kernels with
+# near-equal values (Shared and BCF) don't hide each other; the group stays centered on each N
+DODGE = 0.0
+
+# Fixed legend order, independent of the drawing order (which sets who is on top).
+# Labels not in the list (e.g. "Fronteira de Pareto") keep their relative order at the end.
+LEGEND_ORDER = ['Naive', 'Stockham', 'Shared', 'BCF', 'Radix4', 'cuFFT']
+
+def legend_rank(label: str) -> int:
+    name = label.split(' (')[0]                 # drops suffixes like " (float)" or " (tab.)"
+    return LEGEND_ORDER.index(name) if name in LEGEND_ORDER else len(LEGEND_ORDER)
+
+def legend_order(handles: list, labels: list) -> tuple[list, list]:
+    pairs = sorted(zip(handles, labels), key=lambda hl: legend_rank(hl[1]))   # stable sort
+    return [h for h, _ in pairs], [l for _, l in pairs]
+
+# Factor that nudges a kernel sideways on a log2 N axis. Kernels are spread left to right in
+# the legend order (not the drawing order), with the group centered on each N.
+def dodge_shift(kernel: str, kernels) -> float:
+    order = sorted(kernels, key=lambda k: legend_rank(display_name(k)))
+    return 2 ** ((order.index(kernel) - (len(order) - 1) / 2) * DODGE)
+
 def precision_style(pr: str) -> dict:
     return dict(marker='o', linestyle='-') if pr == 'float' else dict(marker='s', linestyle='--')
 
@@ -158,7 +180,7 @@ def plot_0(out_folder: Path, df: pd.DataFrame, roofline_json: dict, results_prof
     ax.set_ylim(peak_bw * x_min * 0.6, peak_gflops * 2.5)
     ax.set_ylabel('Desempenho (GFLOP/s)')
     ax.set_xlabel('Intensidade aritmética (FLOP/byte)')
-    ax.legend(frameon=False, loc='upper left')
+    ax.legend(*legend_order(*ax.get_legend_handles_labels()), frameon=False, loc='upper left')
 
     # Shaded regions: memory bound left of the ridge, compute bound right of it
     ax.axvspan(x_min, ridge, color=COLOR['blue'], alpha=0.06, linewidth=0, zorder=0)
@@ -214,6 +236,7 @@ def plot_1(out_folder: Path, df: pd.DataFrame, kernels: dict, file_name: str, FP
 
     # For each Kernel
     for kernel, color in kernels.items():
+        shift = dodge_shift(kernel, kernels)
         if kernel not in results:
             print(f"Warning: no results for {kernel}; skipping")
             continue
@@ -225,7 +248,7 @@ def plot_1(out_folder: Path, df: pd.DataFrame, kernels: dict, file_name: str, FP
             t_ci95 = []
             ### For each value of N there are t_mean +- t_ci95
             for N_val, t in data.items():
-                n.append(N_val)
+                n.append(N_val * shift)
                 t_mean.append(t[0])
                 t_ci95.append(t[1])
 
@@ -243,7 +266,7 @@ def plot_1(out_folder: Path, df: pd.DataFrame, kernels: dict, file_name: str, FP
     ax.set_yscale('log')
     ax.set_ylabel('Tempo (ms)')
     ax.set_xlabel(r'Tamanho da entrada ($N$)')
-    ax.legend(frameon=False, loc='upper left')
+    ax.legend(*legend_order(*ax.get_legend_handles_labels()), frameon=False, loc='upper left')
 
     # Saving
     out_path = out_folder / file_name
@@ -270,8 +293,9 @@ def plot_2(out_folder: Path, df: pd.DataFrame, kernels: dict, file_name: str, N:
             points.append((t, e, kernel))
 
             hollow = kernel.endswith('_Tabled')
+            marker = 's' if kernel == 'cuFFT' else '^' if hollow else 'o'
             ax.errorbar(t, e, xerr=row['time_ci95'], yerr=row['energy_ci95'],
-                        color=color, marker='^' if hollow else 'o',
+                        color=color, marker=marker,
                         markerfacecolor='white' if hollow else color,
                         linestyle='none', capsize=2, label=display_name(kernel, mark_tabled=True), zorder=3)
 
@@ -300,11 +324,12 @@ def plot_2(out_folder: Path, df: pd.DataFrame, kernels: dict, file_name: str, N:
     colors = {}
     for kernel, color in kernels.items():
         colors.setdefault(display_name(kernel), color)
+    colors = dict(sorted(colors.items(), key=lambda kc: legend_rank(kc[0])))
     color_handles = [Line2D([], [], color=c, marker='s', linestyle='none', label=k)
                      for k, c in colors.items()]
     shape_handles = [
-        Line2D([], [], color='black', marker='o', linestyle='none', label='Cálculo direto'),
-        Line2D([], [], color='black', marker='^', markerfacecolor='white', linestyle='none', label='Tabelado'),
+        Line2D([], [], color='gray', marker='o', linestyle='none', label='Cálculo direto'),
+        Line2D([], [], color='gray', marker='^', markerfacecolor='white', linestyle='none', label='Tabelado'),
         Line2D([], [], color='gray', linestyle='--', linewidth=0.8, label='Fronteira de Pareto'),
     ]
     fig.legend(handles=color_handles, frameon=False, loc='upper center',
@@ -374,7 +399,7 @@ def plot_3(out_folder: Path, df: pd.DataFrame, kernels: dict, file_name: str, FP
     ax.set_yscale('log')
     ax.set_ylabel('GFLOPS por Watt')
     ax.set_xlabel(r'Tamanho da entrada ($N$)')
-    ax.legend(frameon=False, loc='upper left')
+    ax.legend(*legend_order(*ax.get_legend_handles_labels()), frameon=False, loc='upper left')
 
     # Saving
     out_path = out_folder / file_name
@@ -399,7 +424,7 @@ def plot_3_grid(out_folder: Path, df: pd.DataFrame, kernels_direct: dict, kernel
                 if kernel not in ppw.columns:
                     print(f"Warning: no results for {kernel} ({pr}); skipping")
                     continue
-                ax.plot(ppw.index, ppw[kernel], color=color, marker='o', markersize=3.5,
+                ax.plot(ppw.index, ppw[kernel], color=color, **precision_style(pr), markersize=3.5,
                         linewidth=1.2, label=display_name(kernel))
 
             # Style
@@ -415,11 +440,19 @@ def plot_3_grid(out_folder: Path, df: pd.DataFrame, kernels_direct: dict, kernel
         ax.set_xlabel(r'Tamanho da entrada ($N$)')
     fig.tight_layout()
 
-    # One legend for all panels, below them (only shows up in the saved file:
+    # Legends below the panels, as in plot_2: first one color square per kernel,
+    # then the line style of each precision in gray (only shows up in the saved file:
     # plt.show() cuts anything outside the figure)
-    handles, labels = axes[0, 0].get_legend_handles_labels()
-    fig.legend(handles, labels, frameon=False, loc='upper center',
-               bbox_to_anchor=(0.5, 0.0), ncol=len(labels), fontsize=8,
+    _, labels = legend_order(*axes[0, 0].get_legend_handles_labels())
+    colors = {display_name(k): c for k, c in kernels_direct.items()}
+    color_handles = [Line2D([], [], color=colors[l], marker='s', linestyle='none', label=l) for l in labels]
+    style_handles = [Line2D([], [], color='gray', **precision_style(pr), markersize=3.5, linewidth=1.2, label=name)
+                     for pr, name in [('float', 'FP32'), ('double', 'FP64')]]
+    fig.legend(handles=color_handles, frameon=False, loc='upper center',
+               bbox_to_anchor=(0.5, 0.0), ncol=len(color_handles), fontsize=8,
+               handletextpad=0.3, columnspacing=1.0)
+    fig.legend(handles=style_handles, frameon=False, loc='upper center',
+               bbox_to_anchor=(0.5, -0.05), ncol=len(style_handles), fontsize=8,
                handletextpad=0.3, columnspacing=1.0)
 
     # Saving
@@ -444,7 +477,8 @@ def plot_4(out_folder: Path, df: pd.DataFrame, kernels: dict, file_name: str, l2
             if kernel not in times.columns or tabled not in times.columns:
                 print(f"Warning: no results for {kernel} or {tabled} ({pr}); skipping")
                 continue
-            ax.plot(ns, times[tabled] / times[kernel], color=color, **precision_style(pr), label=display_name(kernel))
+            shift = dodge_shift(kernel, kernels)
+            ax.plot([n * shift for n in ns], times[tabled] / times[kernel], color=color, **precision_style(pr), label=display_name(kernel))
 
         ax.axhline(1.0, color='black', linewidth=0.8)
 
@@ -464,6 +498,7 @@ def plot_4(out_folder: Path, df: pd.DataFrame, kernels: dict, file_name: str, l2
     # One legend for both panels, below them (only shows up in the saved file:
     # plt.show() cuts anything outside the figure)
     handles, labels = axes[0].get_legend_handles_labels()
+    handles, labels = legend_order(handles, labels)
     fig.legend(handles, labels, frameon=False, loc='upper center',
                bbox_to_anchor=(0.5, 0.0), ncol=len(labels), fontsize=8,
                handletextpad=0.3, columnspacing=1.0)
